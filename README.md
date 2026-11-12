@@ -2,7 +2,42 @@
 
 An IT equipment handover and employee equipment-clearance REST API.
 
-**Status: planning.** This README defines the scope and implementation plan for a three-person, three-day Rust API prototype. Application code and a runnable service have not been created yet. The repository is currently named ReleaseReady; the application is AssetDesk.
+**Implementation status:** B's database and asset module are implemented. Employee APIs (A) and equipment issue/return/clearance APIs (C) are separate team deliverables. The project outline below describes the complete application.
+
+## Run the B module
+
+From a fresh checkout, create the local configuration and start PostgreSQL:
+
+```bash
+cp .env.example .env
+docker compose up -d --wait db
+cargo run --locked
+```
+
+Keep an existing `.env` if you already configured one. The default database is dedicated to AssetDesk at `127.0.0.1:5434`; the API listens on `127.0.0.1:3000`. Startup applies the committed SQLx migration before accepting HTTP requests. SQLx CLI is optional.
+
+Exported environment variables take precedence over `.env`. For request logs, start with `RUST_LOG=info,tower_http=debug cargo run --locked`. When running xh from a script or piped terminal, add `--ignore-stdin`.
+
+In another terminal:
+
+```bash
+xh GET http://127.0.0.1:3000/ready
+xh POST http://127.0.0.1:3000/api/v1/assets asset_tag=LAP-021 name="Development laptop" category=laptop
+xh GET http://127.0.0.1:3000/api/v1/assets availability==available sort==asset_tag order==asc limit==20
+xh GET http://127.0.0.1:3000/api-docs/openapi.json
+```
+
+Run checks with the dedicated PostgreSQL service running:
+
+```bash
+cargo fmt --check
+cargo clippy --locked --all-targets -- -D warnings
+cargo test --locked
+```
+
+Integration tests create isolated databases and apply the real migration. They fail if PostgreSQL is unavailable. The OpenAPI specification documents the implemented asset and operational routes.
+
+See [B's database setup and A/C transaction contract](docs/B_DATABASE.md) and [B's implementation walkthrough](docs/B_IMPLEMENTATION.md) for ownership, behavior, and examples.
 
 ## 1. Goal and organizational use
 
@@ -286,6 +321,8 @@ Use one shared AppError and one JSON error format:
 | 400 | Malformed JSON, malformed identifier or invalid query syntax |
 | 404 | Employee, asset or assignment does not exist |
 | 409 | Duplicate email/tag, asset already assigned, inactive employee on issue, unavailable asset, assigned asset status change, stale version or repeated return |
+| 413 | JSON request body exceeds the 2 MiB limit |
+| 415 | Missing or unsupported JSON Content-Type |
 | 422 | Empty/oversized values, invalid condition/state, invalid return deadline or invalid field combination |
 | 500 | Unexpected failure; generic client-facing message |
 | 503 | Database unavailable or readiness check timed out |
