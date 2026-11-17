@@ -24,7 +24,8 @@ identify verifiable source functions, not a claim of a new run for changed code.
 | US-B02 | derives_availability_from_current_custody_and_filters_assets; searches_literal_wildcards_and_backslashes; sorts_and_paginates_with_stable_id_tie_breakers | Baseline passed; repeat after changed query/schema integration |
 | US-B03, NFR-02 | rejects_assigned_asset_status_changes_atomically; status_change_waits_for_issue_lock_then_rechecks_custody | Baseline passed; add integrated C issue/status race after C lands |
 | US-B04, NFR-04/06 | migration_enforces_custody_history_and_return_constraints; readiness_tracks_database_while_health_stays_live | Baseline passed; clean integrated setup/upgrade verification |
-| US-C01 | Partial unique index already tested | Actual overlapping issue HTTP requests: one success, one 409, exactly one open row; inactive/maintenance cases |
+| US-B05 | New location/deployment contract, planned | Test declared usage/locations, eligibility, backfill and new/unknown future categories after implementation; current sample JSON validates the existing POST shape only |
+| US-C01 | Partial unique index already tested | Actual overlapping issue: one success, one 409, one open row; inactive/maintenance and US-B05 deployment-eligibility cases |
 | US-C02 | Row-local return checks in baseline | Version/repeat/damaged return, inactive borrower and atomic rollback tests for C API |
 | US-C03 | History/ownership collection contracts | Admin filters/sort/page and user-isolation tests on integrated service |
 | US-C04/US-X01 | Reporting/end-to-end design | Empty/missing/no-deadline/returned/boundary-time reports; complete clean-checkout scenario and business acceptance |
@@ -76,7 +77,9 @@ invent a fresh runtime result or rerun unrelated tests just to inflate evidence.
 ## Complete acceptance scenario
 
 1. Clean checkout, configuration, database/migration and secure first-admin setup.
-2. Admin creates employee/account and asset; user login accesses only own records.
+2. Admin registers all initial electronic types; after US-B05 lands, demonstrate
+   shared/installed location tracking and portable eligibility. Create employee/
+   account; user login accesses only own records.
 3. Issue available asset; show outstanding custody and incomplete clearance.
 4. Demonstrate conflicting issue/status change and unauthorized access rejection.
 5. Return using current version; verify history, availability and clearance.

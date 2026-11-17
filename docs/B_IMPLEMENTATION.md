@@ -5,6 +5,12 @@ readiness check, asset APIs, collection queries, feature tests and CI setup.
 Employee and assignment/report APIs remain A's and C's work. The shared server
 shell exists so this module can run and be reviewed before those APIs arrive.
 
+The product now focuses on company electronics: TVs, remotes, laptops, HDMI
+connectors, Wi-Fi devices, chargers and UPS units. The category string already
+supports these and future types. Location/deployment fields remain planned;
+current available must not be treated as installed-device loan eligibility.
+See the [revised scope](DEVICE_INVENTORY_SCOPE.md) and [sample bodies](../examples/devices.json).
+
 ## Request flow and files
 
 ```text

@@ -25,6 +25,11 @@ HTTP DTOs define input/output and validation. Handlers translate HTTP to domain
 operations. Repositories/services execute bound queries and coordinate rules.
 Calculations such as clearance are pure functions with an explicit reporting time.
 
+The product now focuses on basic company electronic devices and accessories
+(CR-003). Extensible category text already handles the seven initial types.
+Location, deployment mode and optional accessory relationships are planned; see
+[device scope](../DEVICE_INVENTORY_SCOPE.md). No location/usage column exists yet.
+
 ## Data relationships
 
 ```mermaid
@@ -64,6 +69,9 @@ PATCH omission preserves values; null for non-nullable fields is rejected.
 - Operations needing multiple custody rows lock employee -> asset -> assignment.
 - Issue locks employee and asset, rechecks activity/availability and inserts the
   assignment. The partial unique index is the final duplicate-open-custody guard.
+- Expanded-scope issue validation must also use explicit deployment eligibility
+  after US-B05 lands. An operational/unassigned installed TV or UPS is not
+  automatically eligible for an employee loan.
 - B status updates lock the asset and then inspect open custody; rejected status
   and accompanying metadata changes roll back together.
 - Return rechecks outstanding state/version; records return/condition/version and
@@ -86,6 +94,7 @@ See [B's detailed transaction contract](../B_DATABASE.md#transaction-contract-fo
 | ADR-04 | Retain history and deactivate/retire | Preserve handovers; collections/indexes account for old records |
 | ADR-05 | Opaque bearer sessions/Argon2id access design | Explicit server-side expiry/revocation; adds DB lookup and auth lifecycle work; not implemented by B alone |
 | ADR-06 | Typed errors and generated OpenAPI | Consistent clients/review; documentation must match routes and does not itself enforce rules |
+| ADR-07 | Category remains extensible text | New electronic device/accessory types require no deployment or schema change; team naming convention keeps exact category filters consistent |
 
 These capture known decisions retrospectively. Original decision dates and
 formal approvals were not recorded. New decisions should include context,

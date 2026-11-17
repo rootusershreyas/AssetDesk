@@ -5,7 +5,7 @@ use utoipa::OpenApi;
     info(
         title = "AssetDesk API",
         version = "0.1.0",
-        description = "B module: asset management and PostgreSQL readiness. Employee and assignment APIs are implemented separately by A and C."
+        description = "Company IT/electronics inventory: TVs, remotes, laptops, HDMI connectors, Wi-Fi devices, chargers, UPS units and extensible future categories. B provides registration, queries and operational status. Location/deployment tracking is planned; A/C own access and custody integration."
     ),
     paths(crate::app::health, crate::app::ready),
     components(schemas(

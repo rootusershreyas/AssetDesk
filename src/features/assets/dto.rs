@@ -8,11 +8,13 @@ use super::model::{Asset, OperationalStatus};
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CreateAsset {
-    #[schema(example = "LAP-021", min_length = 1, max_length = 64)]
+    #[schema(example = "TV-001", min_length = 1, max_length = 64)]
     pub asset_tag: String,
-    #[schema(example = "Development laptop", min_length = 1, max_length = 120)]
+    #[schema(example = "Meeting room TV", min_length = 1, max_length = 120)]
     pub name: String,
-    #[schema(example = "laptop", min_length = 1, max_length = 60)]
+    /// Extensible category: tv, tv_remote, laptop, hdmi_connector, wifi_device,
+    /// laptop_charger, ups or another nonempty device/accessory category.
+    #[schema(example = "tv", min_length = 1, max_length = 60)]
     pub category: String,
     #[serde(default)]
     pub operational_status: OperationalStatus,

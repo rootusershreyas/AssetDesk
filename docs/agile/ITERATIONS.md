@@ -9,7 +9,8 @@ Until confirmed, the increments below are proposed goals without calendar promis
 | Increment | Goal | Candidate stories | Dependencies / acceptance |
 | --- | --- | --- | --- |
 | Foundation/inventory | Start the API and register/find/update equipment safely | US-B01..04 | B baseline exists; review and shared develop integration still need recorded evidence |
-| Identity and first handover | Authenticate the right actor and issue equipment to an active employee | US-A01..03, US-C01 | Shared schema/API/guard contracts; A/C can work in parallel after agreeing interfaces |
+| Company electronics/location | Register all initial device types and distinguish portable/shared/installed deployment | US-B01/02/05 | Categories work now; location/usage contract, migration, eligibility and tests are the next increment |
+| Identity and first handover | Authenticate the right actor and issue eligible portable equipment | US-A01..03, US-C01 | Shared schema/guard contracts and US-B05 eligibility; A/C can work in parallel after agreeing interfaces |
 | Returns and clearance | Complete physical return, history and employee-owned reporting | US-C02..04 | Version/condition and authorization integration; rollback and concurrency evidence |
 | Integrated acceptance/release | Demonstrate the complete outcome and operational readiness | US-X01, NFRs | All selected criteria, exact-commit tests/CI, review and release checklist |
 

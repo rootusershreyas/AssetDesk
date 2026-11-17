@@ -1,7 +1,8 @@
 # Requirements specification
 
-Scope baseline: agreed AssetDesk domain plus the owner's admin/user-access
-addition. Status: team-review baseline, not final business sign-off.
+Scope baseline: company IT/electronic-device inventory (CR-003) plus the owner's
+admin/user-access addition. Name pending; AssetDesk is the technical working name.
+See [device scope and catalogue](../DEVICE_INVENTORY_SCOPE.md).
 
 The functional requirement IDs are the user-story IDs in [BACKLOG.md](BACKLOG.md).
 Their acceptance criteria are canonical; link changes to the affected IDs rather
@@ -18,6 +19,7 @@ than maintaining conflicting copies of the same behavior.
 | Inventory queries | US-B02 | B |
 | Transactional asset updates | US-B03 | B |
 | Database/runtime foundation | US-B04 | B with shared integration |
+| Shared/installed location and issue eligibility | US-B05 (planned) | B, coordinated with C |
 | Equipment issue | US-C01 | C |
 | Versioned physical return | US-C02 | C |
 | Custody collections/history | US-C03 | C |
@@ -46,7 +48,12 @@ identity without permission.
 - Unique normalized employee emails; active/inactive employee status.
 - Unique trimmed/uppercase immutable asset tags; asset states in_service,
   maintenance and retired. Name/category are validated, nonempty bounded text.
+- Initial suggested categories: tv, tv_remote, laptop, hdmi_connector, wifi_device,
+  laptop_charger, ups. More categories require no code/schema change; each physical
+  unit/accessory is individually tagged. No aggregate stock/quantity model.
 - Availability is derived from operational state and outstanding assignments.
+- Current available is not installed-device issue eligibility. US-B05 must add
+  location/deployment rules; do not infer portability from category alone.
 - A device has at most one outstanding assignment; returned records remain.
 - Assignment employee/asset IDs are immutable. Transfer means return then new issue.
 - Return timestamp and condition are both absent or both present; versions positive;

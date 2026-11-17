@@ -1,0 +1,9 @@
+[
+  {"asset_tag": "TV-001", "name": "Meeting room TV", "category": "tv", "operational_status": "in_service"},
+  {"asset_tag": "REM-001", "name": "Meeting room TV remote", "category": "tv_remote", "operational_status": "in_service"},
+  {"asset_tag": "LAP-001", "name": "Company laptop", "category": "laptop", "operational_status": "in_service"},
+  {"asset_tag": "HDMI-001", "name": "HDMI connector", "category": "hdmi_connector", "operational_status": "in_service"},
+  {"asset_tag": "WIFI-001", "name": "Office Wi-Fi access point", "category": "wifi_device", "operational_status": "in_service"},
+  {"asset_tag": "CHG-001", "name": "Laptop charger", "category": "laptop_charger", "operational_status": "in_service"},
+  {"asset_tag": "UPS-001", "name": "Office UPS", "category": "ups", "operational_status": "in_service"}
+]

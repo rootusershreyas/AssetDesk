@@ -24,6 +24,7 @@ rehearsals need a named operator/cadence before organizational use.
 | Editing applied migrations or deleting volumes | Startup failure or data loss | B: append migrations, preserve data, rehearse backup/restore | Procedure documented; restore unverified |
 | Old green evidence used for changed code | False readiness assessment | All: exact-commit test/CI/review records and honest unfinished-story status | Process required |
 | Review/acceptance responsibilities unclear | Work merged/released without acceptance | All: name business reviewer/operator; teammate review and explicit release record | Names/confirmation pending |
+| Installed/shared electronics mistaken for issuable stock | Incorrect handovers or lost location context | B/C: explicit location/deployment and eligibility model, not category inference | US-B05 planned |
 
 ## Change record: CR-001 access control
 
@@ -47,6 +48,21 @@ rehearsals need a named operator/cadence before organizational use.
 - Impact: documentation/review workflow; no application runtime/schema changes.
 - Acceptance: team/business review pending. Writing plans does not prove past
   ceremonies occurred or future release checks passed.
+
+## Change record: CR-003 company IT/electronic inventory
+
+- Origin: owner requested a focus on TVs, TV remotes, laptops, HDMI connectors,
+  Wi-Fi devices, laptop chargers, UPS units and additional electronic types later.
+- Product direction: electronic-device/accessory inventory first; portable
+  handover/clearance remains a supporting workflow. Name decision is deferred.
+- Current support: free-text categories already handle these types. Added scope
+  document, synthetic examples and API documentation; no DB/runtime rule changed.
+- Next work: US-B05 location/deployment and issue eligibility with B/C review.
+  Parent/accessory and maintenance/movement history are later optional work.
+- Compatibility: keep routes, crate, database/container/volume and repository
+  names until branding/migration is deliberately selected. Existing data retained.
+- Acceptance: verify scope with A/C before implementing new location fields;
+  this record does not mark those features complete.
 
 ## New change/incident template
 

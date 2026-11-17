@@ -31,7 +31,7 @@ pub(super) fn router() -> Router<AppState> {
 #[openapi(
     paths(create_asset, list_assets, get_asset, update_asset),
     components(schemas(Asset, OperationalStatus, CreateAsset, PatchAsset, AssetPage, AssetSort, SortOrder, ErrorResponse)),
-    tags((name = "assets", description = "Company equipment registration and availability"))
+    tags((name = "assets", description = "Company IT/electronic device and accessory inventory"))
 )]
 pub(super) struct AssetApi;
 

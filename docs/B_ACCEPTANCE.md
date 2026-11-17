@@ -4,6 +4,12 @@ Scope: database setup and asset inventory on feat/assets-database. Account/role
 management belongs to A; equipment issue/return and global clearance belong to C.
 The shared business schema supports their integration without implementing those APIs.
 
+CR-003 focuses inventory on company electronic devices/accessories. The existing
+category contract supports all initial types; location/deployment and eligibility
+are planned US-B05 work. See [device scope](DEVICE_INVENTORY_SCOPE.md). Current
+manual availability checks apply to operational/unassigned custody, not proof
+that a shared/installed device can be loaned.
+
 ## User stories and verification
 
 The local labels B-01 through B-04 below map respectively to canonical

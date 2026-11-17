@@ -7,6 +7,7 @@ feedback, release, operations and maintenance for the A/B/C team.
 | Guide | Purpose |
 | --- | --- |
 | [Product brief](agile/PRODUCT_BRIEF.md) | Problem, goal, actors, ownership and boundaries |
+| [IT/electronic device scope](DEVICE_INVENTORY_SCOPE.md) | Initial seven categories, extensibility and planned location/deployment |
 | [Requirements](agile/REQUIREMENTS.md) | Functional/nonfunctional acceptance and permissions |
 | [Backlog](agile/BACKLOG.md) | Prioritized story proposal, acceptance criteria and recorded work states |
 | [Iterations](agile/ITERATIONS.md) | Planning/stand-up/review/retrospective records, Ready/Done and Git policy |

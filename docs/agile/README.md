@@ -12,6 +12,11 @@ acceptance criteria and design, implement/test it, review a working result, and
 adapt the backlog from feedback. Repeat these activities throughout development.
 Documentation changes with the code in each PR.
 
+The current product direction is [company IT/electronics inventory](../DEVICE_INVENTORY_SCOPE.md),
+including TVs/remotes, laptops, HDMI connectors, Wi-Fi devices, chargers and UPS
+units. More categories can be added. Final name is pending; CR-003 records the
+scope change and the planned location/deployment increment.
+
 Use the company's existing framework, iteration length and meeting cadence.
 Those details and the business acceptance reviewer have not yet been supplied;
 do not invent a Scrum role, sprint duration, velocity or completed ceremony.
