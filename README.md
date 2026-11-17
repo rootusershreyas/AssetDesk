@@ -1,168 +1,136 @@
-# AssetDesk (working name)
+# Company support ticketing API (name pending)
 
-A Rust REST API for **company IT infrastructure and electronic-device inventory**.
-The final project name will be chosen by the owner later.
+A planned Rust REST API for employees to raise and track internal support
+requests, starting with **Infra** and **HR**. Administrators manage users and
+categories; support agents work on tickets in their assigned categories.
 
-Track TVs, TV remotes, laptops, HDMI connectors, Wi-Fi devices, laptop chargers,
-UPS units and more company electronic device types as needed.
+The final name is undecided. The repository remains `AssetDesk`; the existing
+local PostgreSQL setup uses `assetdesk`. No Rust package is currently present.
 
-## Goal and scope
+## Problem and workflow
 
-Answer: **What electronic equipment does the company own, what type is it, and
-what is its operational status?** The integrated product will also show where
-equipment is deployed and who is responsible for portable items.
-
-Inventory is the main purpose. Employee issue/return supports portable equipment;
-installed/shared devices need location/deployment tracking. This is physical
-inventory management, not automatic network monitoring or remote device control.
-See the [device inventory scope](docs/DEVICE_INVENTORY_SCOPE.md).
-
-## Initial device catalogue
-
-| Device | Suggested category | Example tag |
-| --- | --- | --- |
-| TV | tv | TV-001 |
-| TV remote | tv_remote | REM-001 |
-| Laptop | laptop | LAP-001 |
-| HDMI connector/adapter | hdmi_connector | HDMI-001 |
-| Wi-Fi device | wifi_device | WIFI-001 |
-| Laptop charger | laptop_charger | CHG-001 |
-| UPS | ups | UPS-001 |
-
-Category is extensible text. Add usb_hub or projector without changing code or
-schema. Use consistent spelling for exact filters. Each physical unit gets its
-own tag; there is no aggregate quantity/stock model in the current API.
-
-[examples/devices.json](examples/devices.json) contains seven synthetic POST
-bodies, not actual company inventory. Nothing is imported automatically.
-
-## Implementation status
-
-| Area | Status |
-| --- | --- |
-| Database/pool and device create/get/list/PATCH | Implemented in B baseline |
-| Unique tags, categories, operational states, search/filter/sort/page | Implemented |
-| Transactional status guard for employee-assigned equipment | Implemented |
-| Admin/user accounts and authorization | A's separate integration work |
-| Portable issue/return/history and clearance | C's integration work |
-| Structured location and deployment mode | Planned US-B05; not current fields |
-| Parent-device/accessory links and maintenance/movement history | Optional later backlog |
-| Final product/repository/package rename | Owner decision pending |
-
-Current available means in_service with no outstanding employee assignment. It
-does not prove that an installed TV/UPS may be borrowed. The next location/
-deployment increment must distinguish those concepts before issue operations
-cover all device types. Category alone does not determine deployment.
-
-## Run B's inventory API
-
-From a fresh checkout, create .env only if one does not already exist:
-
-```bash
-cp .env.example .env
-docker compose up -d --wait db
-cargo run --locked
-```
-
-Preserve existing local configuration. Technical names remain assetdesk while
-branding is undecided: PostgreSQL at 127.0.0.1:5434, API at 127.0.0.1:3000.
-Startup connects and applies committed migrations before serving. SQLx CLI is
-optional. Exported environment variables override .env.
-
-Use RUST_LOG=info,tower_http=debug for request logs. In scripted xh commands add
---ignore-stdin unless intentionally piping JSON into the request.
-
-```bash
-xh GET http://127.0.0.1:3000/ready
-xh POST http://127.0.0.1:3000/api/v1/assets "asset_tag=TV-001" "name=Meeting room TV" "category=tv"
-xh GET http://127.0.0.1:3000/api/v1/assets category==tv sort==asset_tag order==asc limit==20
-xh GET http://127.0.0.1:3000/api-docs/openapi.json
-```
-
-Keep key=value as one argument without a space after equals. Query parameters
-use key==value. Reusing an existing tag returns 409.
-
-## Current endpoints and data
-
-| Method | Endpoint | Purpose |
-| --- | --- | --- |
-| POST | /api/v1/assets | Register device/accessory |
-| GET | /api/v1/assets | Search/filter/sort/paginate inventory |
-| GET | /api/v1/assets/{id} | Read device details |
-| PATCH | /api/v1/assets/{id} | Update metadata or operational status |
-| GET | /health | Process liveness |
-| GET | /ready | Database readiness |
-| GET | /api-docs/openapi.json | Implemented API contract |
-
-Create accepts asset_tag, name, category and optional operational_status. Responses
-add UUID/timestamps and available. Tags are immutable. PATCH accepts name/category/
-status: omitted values remain; null, unknown fields and empty updates are rejected.
-Location/usage/parent-device IDs are not accepted yet.
-
-Statuses: in_service, maintenance, retired. They record inventory state, not live
-hardware health. Collections support literal name/tag search (q), category,
-operational_status and availability filters; sorts are asset_tag, name, created_at.
-Limit defaults to 20, maximum 100; offset is nonnegative; ID breaks sorting ties.
-
-The shared business migration creates employees, assets and assignments with
-UUIDs, time-zone-aware timestamps, constraints and a partial unique index allowing
-only one outstanding assignment per device. Keep applied migrations immutable;
-location/deployment changes need an additional migration and tests.
-
-## A/B/C ownership
-
-| Member | Service | Branch |
-| --- | --- | --- |
-| A | Employees, accounts, admin/user access and guards | feat/employees / coordinated access branch |
-| B: Shreyas | Device/accessory inventory, categories, DB and planned location/deployment | feat/assets-database |
-| C | Portable allocations/returns/history/reports; shared/installed deployment history next | feat/assignments-clearance |
-
-A supplies authentication; B/C apply guards and ownership in the integrated
-product. The standalone B API does not enforce login yet.
-
-Custody operations lock employee -> asset -> assignment. C locks the asset before
-checking issue eligibility and inserting custody. B locks before status checks
-and rolls back invalid combined updates. Preserve history; use versioned returns;
-damaged returns set maintenance atomically. Deadlines never automatically return
-or disable physical equipment.
-
-## Agile delivery and documentation
-
-Follow company Agile practice: refine stories/criteria, plan an increment,
-design/build/test, review working behavior and adapt from feedback. Company
-framework/cadence and business acceptance reviewer still need recording.
-
-- [Documentation index](docs/README.md) and [Agile handbook](docs/agile/README.md)
-- [Product brief](docs/agile/PRODUCT_BRIEF.md)
-- [Requirements](docs/agile/REQUIREMENTS.md) and [backlog](docs/agile/BACKLOG.md)
-- [Iterations and Ready/Done](docs/agile/ITERATIONS.md)
-- [Architecture/decisions](docs/agile/DESIGN.md)
-- [Test traceability](docs/agile/TESTING.md)
-- [Release/recovery](docs/agile/RELEASE.md) and [maintenance/changes](docs/agile/MAINTENANCE.md)
-- [B setup](docs/B_DATABASE.md), [implementation](docs/B_IMPLEMENTATION.md) and [acceptance](docs/B_ACCEPTANCE.md)
-
-CR-003 records this scope change. Location/deployment and optional relationships
-are planned, not implemented. Documentation does not certify final acceptance.
-
-## Checks and integration
-
-With dedicated PostgreSQL available:
-
-```bash
-cargo fmt --check
-cargo clippy --locked --all-targets -- -D warnings
-cargo test --locked
-```
-
-Integration tests use isolated real PostgreSQL and do not silently skip missing DB
-access. CI runs formatting, Clippy and tests. Historical evidence belongs to its
-exact commit; changed-code results belong in its PR. Scope/example changes alone
-do not certify future location or C workflows.
+An employee reports “My laptop charger is not working” under Infra, or
+“My attendance record needs correcting” under HR. The request enters the
+appropriate queue, an eligible agent takes responsibility, and the employee
+tracks the conversation and outcome.
 
 ```text
-feature/fix/docs -> reviewed PR -> develop -> release PR -> main
+Employee raises ticket -> Category queue -> Agent claims / admin assigns
+-> In progress -> Resolved with explanation -> Employee closes or reopens
 ```
 
-Use normal pushes and teammate review. Merge B's shared foundation before A/C
-depend on it in develop. PR/issue templates link stories, design, tests and
-acceptance; branch protections require separate repository configuration.
+This is an internal service desk. Workflow references include Jira Service
+Management (Atlassian), ServiceNow, Zendesk and the earlier ServiceDesk Plus
+reference. The [reference and learning design](docs/ticketing/SHORT_NOTICE_DESIGN.md)
+links the official sources and records the small patterns selected for this API.
+
+## Current implementation status
+
+**The ticketing system is a design proposal; its endpoints are not implemented.**
+The old application source, Cargo files, tests, migrations, examples, CI workflow,
+build output and superseded inventory documents have been removed from this
+working tree. The folder now contains the ticketing plans, PostgreSQL development
+setup, Git ignore rules and review/issue templates.
+
+Git history and existing PostgreSQL data/volumes are preserved. Bootstrap a new
+Rust foundation through a reviewed PR before implementing the planned services.
+Choose a compatible migration baseline before connecting new migrations to an
+existing database. There is no runnable API, generated OpenAPI or application
+test suite in this cleaned baseline.
+
+## Target features
+
+| Area | Planned behavior |
+| --- | --- |
+| Users | Create, read, list, update and deactivate accounts; employee, agent and admin roles |
+| Categories | Create/update/list/deactivate Infra, HR and future support categories |
+| Support membership | Associate agents with one or more categories |
+| Tickets | Raise, view, search, filter, sort and paginate requests |
+| Ownership | Eligible agent claims a ticket; admin assigns/reassigns it |
+| Progress | Validated status transitions, resolution explanation and reopening |
+| Collaboration | Employee-visible comments and an ordered event history |
+| Concurrency | Version checks and transactional updates prevent conflicting changes |
+| Access | Employees see their own tickets; agents see their queues; admins oversee all |
+
+HR ticket contents must not be visible to unrelated employees or Infra-only
+agents. Lists, counts, detail views, comments and history follow the same access
+rules. Roles in a users table alone do not enforce these rules.
+
+## Three-person ownership
+
+| Member | Service | Created branch | First deliverable |
+| --- | --- | --- | --- |
+| A | Users, login/session lifecycle and shared authorization | feat/support-users | User contract, CRUD and active/inactive accounts; agree authentication increment |
+| **B: Shreyas** | **Categories, category-agent membership and shared database coordination** | **feat/support-categories** | **Shared foundation first; then category migration, CRUD and membership** |
+| C | Tickets, claiming/assignment, lifecycle, comments and history | feat/support-tickets | Ticket migration and create/get/list contract |
+
+Use modules in one Rust application and one PostgreSQL database. Each owner
+supplies their API documentation and tests. Detailed stories and the proposed
+branch split are in the [delivery plan](docs/ticketing/DELIVERY.md).
+
+## P6 and the time limit
+
+The proposed three-day prototype uses five business tables: users, categories,
+category_agents, tickets and ticket_events. It prioritizes category queues,
+eligible-agent claim, four lifecycle states, transactional history, basic
+filter/sort/page operations and tests. Comments, admin reassignment, advanced
+queries and login/access integration remain follow-up work. The full target
+above is broader than this milestone.
+
+The [P1–P6 learning map](docs/ticketing/SHORT_NOTICE_DESIGN.md#applying-all-six-parts-naturally)
+connects each course part to planned implementation and demonstration evidence.
+Standalone algorithm/data-structure exercises remain separate learning work.
+
+Use Rust, Tokio, Axum, SQLx, PostgreSQL, Serde/JSON, `tracing` and Utoipa/OpenAPI;
+verify APIs with `xh`, `jq` and integration tests against real PostgreSQL.
+
+P6 says the project-management domain is an example. This domain exercises the
+same API concepts: resource relationships, assignment eligibility, validation,
+HTTP errors, collection queries and concurrency.
+
+P6's closing instruction explicitly defers authentication/authorization and
+estimates about a week for it. Our requested login/role enforcement is additional
+scope. The proposed three-day milestone is a **local API prototype**; secure
+employee use requires a separately verified authentication and access increment.
+No three-day production-readiness commitment is made.
+
+Email ingestion/notifications, attachments, SLA escalation, approval workflows,
+AI features, a frontend and payroll processing are deferred.
+
+## Documentation and workflow
+
+- [Detailed A/B/C assignments and first tasks](docs/ticketing/TEAM_TASKS.md)
+- [Created branches and recommended Git workflow](docs/ticketing/BRANCHING.md)
+- [Short-notice scope, product references and P1–P6 learning map](docs/ticketing/SHORT_NOTICE_DESIGN.md)
+- [Complete team implementation handoff](docs/ticketing/TEAM_HANDOFF.md)
+- [Requirements, permissions and acceptance criteria](docs/ticketing/REQUIREMENTS.md)
+- [Data model, API contracts and transaction rules](docs/ticketing/DESIGN.md)
+- [A/B/C tasks, three-day proposal and Agile lifecycle](docs/ticketing/DELIVERY.md)
+- [Documentation index](docs/README.md)
+- [Ticketing decisions and cleanup record](docs/ticketing/CHANGES.md)
+
+```text
+feature/docs branch -> teammate-reviewed PR into develop -> release PR into main
+```
+
+Use normal pushes. Do not force-push, directly update protected branches or
+claim incomplete work as delivered. The three feature branches were created
+from origin/develop. The planning/cleanup baseline needs teammate review into
+develop before members merge those plans into their branches. No main/develop
+merge or repository-rule change is performed by creating the branches.
+
+## Database setup only
+
+Preserve an existing .env. The following commands start/check PostgreSQL;
+application code will be added in the foundation increment.
+
+```bash
+test -f .env || cp .env.example .env
+docker compose up -d --wait db
+docker compose exec db psql -U assetdesk -d assetdesk -c 'SELECT current_database(), current_user;'
+```
+
+The host database port is 5434. The proposed API port is 3000 once an application
+exists. Cargo build/run/test and API health calls become available after the
+new foundation is implemented. Do not reset a database volume to make a future
+migration mismatch disappear; decide the database baseline explicitly.
