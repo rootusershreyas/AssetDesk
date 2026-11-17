@@ -4,6 +4,23 @@ An IT equipment handover and employee equipment-clearance REST API.
 
 **Implementation status:** B's database and asset module are implemented. Employee APIs (A) and equipment issue/return/clearance APIs (C) are separate team deliverables. The project outline below describes the complete application.
 
+## Agile methodology and lifecycle documentation
+
+Follow the company's Agile approach: refine user stories and acceptance criteria,
+plan a small increment, design/build/test it, review working behavior, and adapt
+the backlog from feedback. Keep documentation and evidence in the same PR as
+the related change. The company's specific framework and iteration cadence
+remain to be recorded; no sprint dates or past meetings are invented here.
+
+The [Agile delivery handbook](docs/agile/README.md) documents the complete
+lifecycle, from product discovery through release and maintenance. Use the
+[documentation index](docs/README.md) to find requirements, A/B/C stories,
+iteration records, architecture, tests, release gates, risks and change records.
+The PR and issue templates capture acceptance and evidence for future work.
+
+Current code evidence is tied to B's baseline commit. The full product still
+requires access/employee/custody integration, review and final acceptance.
+
 ## Run the B module
 
 From a fresh checkout, create the local configuration and start PostgreSQL:
@@ -39,6 +56,9 @@ Integration tests create isolated databases and apply the real migration. They f
 
 See [B's database setup and A/C transaction contract](docs/B_DATABASE.md) and [B's implementation walkthrough](docs/B_IMPLEMENTATION.md) for ownership, behavior, and examples.
 
+Use [B's Agile acceptance and handoff checklist](docs/B_ACCEPTANCE.md) for user
+stories, test traceability, manual API checks and A/C integration steps.
+
 ## 1. Goal and organizational use
 
 Answer three questions:
@@ -49,7 +69,7 @@ Answer three questions:
 
 Example: IT registers a laptop, issues it to an employee, records its return and condition, and retains the custody history. Before the employee leaves, IT retrieves a report of outstanding equipment. Asset availability and clearance come from assignment records.
 
-Scope: a three-person, three-day API prototype. Useful for demonstrating and piloting equipment custody with sample data. It is not a full HR, payroll, procurement, or inventory accounting system. Authentication and authorization are deferred, following the final instruction in P6. Employee IDs identify borrowers; they do not authenticate the person calling the API.
+Scope: a three-person equipment-custody API prototype. The owner added admin/user authentication and authorization to the original P6 scope; A owns that access layer and its integration with B/C. This standalone B baseline does not yet enforce login. Re-estimate the additional work during company Agile planning; the original three-day plan is not an updated delivery commitment. See the [requirements and permission matrix](docs/agile/REQUIREMENTS.md).
 
 P6 explicitly permits choosing a different project. Its programmers/teams/projects/tasks are the sample domain, not compulsory entities for AssetDesk. Preserve its API design, technology, validation, concurrency, documentation, and testing learning objectives.
 
@@ -67,6 +87,7 @@ P6 explicitly permits choosing a different project. Its programmers/teams/projec
 - Report an employee's outstanding equipment and equipment clearance.
 - Derive overdue assignments from expected return times.
 - Prevent concurrent duplicate assignments and stale returns.
+- Integrate authenticated admin management and employee-owned self-service access.
 - Provide JSON errors, structured logs, OpenAPI documentation, real-PostgreSQL integration tests, and xh/jq examples.
 
 ### Only after the required checks pass
@@ -76,7 +97,7 @@ P6 explicitly permits choosing a different project. Its programmers/teams/projec
 
 ### Outside this iteration
 
-Authentication, permissions, a frontend, employee approval workflows, email/Slack notifications, background jobs, reservations, purchasing, depreciation, payroll, attachments, barcode/QR scanning, device agents, and automated device locking or wiping.
+A frontend, employee approval workflows, email/Slack notifications, background jobs, reservations, purchasing, depreciation, payroll, attachments, barcode/QR scanning, device agents, and automated device locking or wiping.
 
 No hard deletion endpoints are needed for the prototype. Deactivate employees and retire assets; preserve assignment history.
 
@@ -209,6 +230,10 @@ If the optional deadline-edit feature is implemented, it must follow the same lo
 ## 7. API contract
 
 All business routes start with `/api/v1`. Create operations return 201 with a Location header; successful reads and updates return 200 with JSON.
+
+The inventory below is the whole-product contract and includes planned A/C
+routes. Current B routes are listed in [B's implementation guide](docs/B_IMPLEMENTATION.md).
+The integrated access requirement is defined in the [permission matrix](docs/agile/REQUIREMENTS.md).
 
 | Method | Route | Purpose |
 | --- | --- | --- |
@@ -413,6 +438,10 @@ Deliverable: a tested issue/return/history/clearance workflow.
 Shared-file ownership: A edits Cargo.toml, app/router, error.rs and the OpenAPI registry; B edits db/state and the initial migration; each member owns their feature modules and tests. Coordinate overlapping changes in a small prerequisite PR. A and B review C's transaction behavior together.
 
 ## 12. Three-day execution
+
+This is the original planning baseline. Use the [iteration plan](docs/agile/ITERATIONS.md)
+and [current backlog](docs/agile/BACKLOG.md) to plan the expanded scope and record
+actual capacity, dates, feedback and acceptance.
 
 ### Day 1: one working vertical flow
 
