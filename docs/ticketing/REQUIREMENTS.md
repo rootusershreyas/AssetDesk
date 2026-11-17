@@ -1,159 +1,170 @@
-# Internal support ticketing requirements
+# IT support ticketing requirements
 
-Status: planned, 2026-11-17. Ticketing behavior and acceptance are not yet
-implemented. The project name remains undecided.
+Status: planned, 2026-11-17. The shared repository contains documentation;
+the owner has locally initialized B's Rust scaffold and reported cargo check
+passing. No shared ticketing API or database workflow is implemented yet.
+The final product name is undecided; AssetDesk remains the repository name.
 
-Current baseline: Markdown documentation only. Application code, manifests,
-Compose/environment configuration, migrations, tests and CI have been removed
-from this working tree; Git history remains. Existing database containers and
-data/volumes outside the repository are unaffected by this file cleanup. A future
-foundation must create the runtime/configuration and record database compatibility
-before migrations run, preferably using a separate empty development database.
+## Product scope and agreed workflow
 
-## Purpose and boundaries
+Employees raise IT **Service Requests** or **Incidents**. An **IT Manager**
+reviews each ticket and selects P1/P2/P3/P4 priority. The manager personally
+handles P1; P2–P4 go to an eligible **IT Team Member**. The assigned handler
+records a resolution, and the original requester confirms closure or reopens.
 
-Give employees one place to request company support and see who is handling it.
-Start with flat, administrator-managed **Infra** and **HR** categories. Adding
-Finance or Facilities later should require data changes, not a new Rust enum or
-deployment. A category represents a support queue, not an employee's department.
+The owner confirmed manager review/assignment for the first demo and requester
+confirmation for every priority, including P1. These decisions resolve the
+conflicting self-claim and manager-direct-closure flows in the pasted proposal.
+Open queue claiming is not part of this selected workflow.
 
-Examples:
+Initial domain: IT infrastructure support. Examples: a charger request is a
+service_request; failed Wi-Fi is an incident. HR is outside the first workflow;
+adding HR requires a separately authorized support boundary, not automatic
+access for every IT Manager. Payroll/attendance processing is outside scope.
 
-- Infra: Wi-Fi unavailable, charger replacement or meeting-room TV issue.
-- HR: attendance correction, leave-policy question or payslip enquiry.
+Fixed values:
 
-HR tickets record requests and responses. They do not calculate payroll, change
-attendance balances or implement statutory compliance.
+- role: employee, it_manager, it_member.
+- account_status: active, inactive.
+- ticket_type: service_request, incident.
+- priority: p1, p2, p3, p4; manager-decided, null before first review.
+- status: open, in_progress, resolved, closed.
 
 ## First milestone and follow-up scope
 
-The proposed three-day local prototype uses five business tables: users,
-categories, category_agents, tickets and ticket_events. Include the shared
-foundation, user/category management, agent membership, ticket create/get/list,
-eligible-agent claim, four-state lifecycle and transactional event history.
+The tentative three-day local API prototype uses five business tables: users,
+categories, category_agents, tickets and ticket_events. PostgreSQL sequences
+provide human ticket references without adding a business table.
 
-The selected T-C02 slice uses category/status filters, created_at ascending or
-descending with an ID tie-breaker, limit 1..100 (default 20) and nonnegative
-offset (default 0). The T-C03 slice implements agent claim only. Deliver matching
-OpenAPI, unit/real-PostgreSQL tests and an xh/jq demonstration.
+Include the shared foundation; users/role metadata; type-aware flat categories;
+member mappings; ticket creation/get/list; unique SR/INC references; manager
+review and assignment; lifecycle, resolution, confirmation/reopening; events
+and a minimal personal work-history projection. Lists support ticket_type,
+category_id, status, priority and reviewed filters, chronological sorting and
+bounded pagination (limit 20 by default, maximum 100; offset nonnegative).
 
-Comments, admin reassignment, advanced queries, notifications, attachments and
-SLA automation remain follow-up work. T-A02 login/sessions and T-A03 access
-enforcement remain required before company use. A synthetic local actor is
-not proof of identity or HR privacy. Record partial T-C02/T-C03 delivery without
-marking the whole parent story Done. Standalone course exercises remain separate
-learning evidence; the P1–P6 map and product references are in the root README.
+Follow-up work: subcategories, comments/private notes, reassignment and changes
+to an already-reviewed priority, advanced search/reporting, notifications,
+attachments, SLA automation, dashboards/frontend and real authentication.
+These remain requested target capabilities rather than completed prototype work.
+Subcategories will use a one-level parent relationship in categories, inherit
+root-category membership and stay within the same ticket_type.
+
+The prototype may use explicitly documented synthetic actors locally. T-A02/03
+login, sessions and backend authorization remain required before real company
+use; role metadata alone does not establish identity or confidentiality.
+The expanded business rules require new estimates; three days is a capacity
+proposal, not an enterprise-release commitment. P1–P6 evidence remains mapped
+in the root README; standalone algorithm exercises remain separate work.
 
 ## Roles and target access
 
-| Operation | Employee | Support agent | Admin |
+| Operation | Employee | IT Team Member | IT Manager |
 | --- | --- | --- | --- |
-| Raise a ticket in an active category | Yes, for self | Yes, for self | Yes, for self |
-| Read/comment on own ticket | Yes | Yes | Yes |
-| Read another employee's ticket | No | Only within an assigned support category | Yes |
-| Claim an unassigned ticket | No | Only within an assigned support category | Assign an eligible agent instead |
-| Work/resolve a ticket | No | Only if assigned to that ticket | Yes |
-| Assign/reassign a ticket | No | No | Yes, to an eligible agent |
-| Close/reopen a resolved ticket | Own ticket | Own ticket | Yes |
-| Change users, roles or category memberships | No | No | Yes |
-| Manage categories | No | No | Yes |
+| Raise a ticket | For self | For self | For self |
+| Read own requests and their resolution/history | Yes | Yes | Yes |
+| Read another requester's full ticket | No | Only while currently assigned | All IT tickets |
+| Review priority and assign | No | No | Yes |
+| Handle P1 | No | No | Acting manager takes ownership |
+| Handle P2–P4 | No | Assigned active member with category membership | Assign an eligible member |
+| Start/resolve | No | Own assigned ticket | Own assigned P1 ticket |
+| Confirm closure or reopen | Own resolved request | Own resolved request | Own resolved request |
+| Manage users/categories/membership | No | No | Yes |
+| Personal work history | Own request history | Own work metadata | Own work and all IT activity |
 
-An agent remains a requester when reporting their own issue. An Infra agent has
-no staff access to HR tickets unless also a member of HR. Admin access to all
-categories is an explicit rule of this initial design; a separate HR-admin
-permission model would be a later requirement.
+Being a manager is not a shortcut to confirming another person's resolution.
+Every role may act as requester for its own ticket. A former handler's work
+history exposes only that handler's historical metadata (reference, action,
+time and own assignment/handling facts), not the ticket's ongoing contents or
+other users' notes. Prior involvement alone grants no current full-ticket access.
 
-Target identity comes from a validated server-side authentication context.
-The request must not select its own role or impersonate a requester through a
-body field/header. Every read, list, count, comment and history endpoint applies
-the same ticket scope. Return 404 for a ticket outside the caller's visibility;
-return 403 for a forbidden operation on an otherwise visible resource.
+Active users can discover the active category catalogue for creating requests.
+Managers may include inactive categories in management views; deactivation does
+not remove classification/history from existing tickets.
+
+Target requester/actor IDs and roles come from validated server-side identity,
+not client-selected privileged fields. Apply scope in SQL before filtering,
+pagination or counts, including events and future comments. Missing/invisible
+tickets return 404; forbidden actions on a visible resource return 403.
 
 ## Functional stories and acceptance
 
-All stories below start in **Backlog**. They are proposed targets, not completed
-implementation.
+All business stories start in Backlog. B's local compiler check completes only
+scaffold verification, not these HTTP/database acceptance criteria.
 
-| ID | Owner | Story and acceptance |
+| ID | Owner | Acceptance |
 | --- | --- | --- |
-| T-X00 | B coordinates; A/C review | Bootstrap a new Rust manifest/runtime, Compose/environment configuration and ignore rules, DB startup, errors, logging, CI and test setup; agree database compatibility before applying a new migration baseline. Review the foundation PR into develop before feature branches depend on it. Only Markdown plans currently exist. |
-| T-A01 | A | Admin manages users: UUID, name, normalized unique email, role, active/inactive status and timestamps; invalid fields rejected; duplicate email 409; user list supports pagination. Preserve users referenced by ticket history. |
-| T-A02 | A | Login/logout and shared active-user context: password hashes, revocable/expiring sessions, inactive-user rejection, safe errors and no credentials in logs. Real access enforcement requires this increment. |
-| T-A03 | A + B/C | Enforce the permission matrix on all routes, including list/count queries and comments/events; negative tests show another employee and an Infra-only agent cannot inspect an HR ticket. |
-| T-B01 | B | Admin creates/reads/lists/updates categories: trimmed name 1..80 characters, description up to 1,000, unique name ignoring case. Duplicate name 409; category list is paginated. |
-| T-B02 | B | Admin deactivates/reactivates categories. New tickets in an inactive category fail with 409; existing tickets remain readable and actionable. No hard deletion of referenced categories. |
-| T-B03 | B | Admin adds/removes agents from categories. Only active users with agent role may be added. A user can support several categories; duplicate addition is idempotent. Removing membership with an assigned, non-closed ticket fails 409 until outstanding work is handled under the lifecycle rules. |
-| T-C01 | C | Employee raises a ticket: UUID, category, subject 1..160 characters, description 1..8,000, priority low/medium/high (default medium), open status, no assignee, version 1 and timestamps. Invalid/inactive categories rejected. |
-| T-C02 | C | Authorized ticket lists support q, category, status, priority, assignee, created/updated sort, limit 1..100 and nonnegative offset. Search is literal; sorting has a stable ID tie-breaker. Detail returns the same visible resource. |
-| T-C03 | C | Eligible agent claims an open/unassigned ticket, or admin assigns/reassigns to an eligible agent. After visibility checks, stale versions, invalid assignment eligibility and simultaneous conflicting claims fail 409 without partial changes; invisible tickets return 404 first. |
-| T-C04 | C | Apply lifecycle rules below; require a resolution explanation and reopening reason; store each successful change and its actor in event history atomically. |
-| T-C05 | C | Authorized users add employee-visible comments of 1..4,000 characters before closure and list comments/events in deterministic, paginated order. Comment/event reads follow ticket visibility; comments on closed tickets fail 409. |
-| T-X01 | All | Integrate services, document actual OpenAPI behavior, run real-PostgreSQL tests and demonstrate the workflow. Authentication-deferred demos must be labelled as local prototypes. |
+| T-X00 | B coordinates; A/C review | Establish Rust/runtime/configuration, ignore rules, DB baseline/pool/migrations, shared errors, actor interface, logging, OpenAPI, tests and CI. Preserve existing external DB data; agree an empty new DB or compatible migration path. |
+| T-A01 | A | Create/get/list/update users with UUID, normalized unique email, name, role, account_status and timestamps. Validate inputs; duplicate email 409. Preserve referenced accounts. |
+| T-A02 | A | Implement separately estimated login/logout, password setup/hashing, session expiry/revocation and inactive-user rejection. |
+| T-A03 | A + B/C | Enforce the access matrix on all routes and nested/list/history paths; prove cross-user and previous-handler access restrictions. |
+| T-B01 | B | Create/read/list/update categories with ticket_type, trimmed name 1..80 characters, description up to 1,000 and active flag. Names unique ignoring case within ticket_type; duplicates 409. Category type is immutable. |
+| T-B02 | B | Deactivate/reactivate categories. Inactive categories block new requests; existing tickets can still be reviewed/handled. Preserve referenced categories. |
+| T-B03 | B | Manage category membership idempotently. Only active it_members can join, and one member may support multiple categories. Block removal while that category has assigned non-closed work for the member. P1 manager eligibility is separate from membership. |
+| T-B04 | B, later | Add one-level same-type subcategories, parent/child validation and inherited root membership; prevent parent changes/cycles and apply parent deactivation rules. Not in the first migration/API slice. |
+| T-C01 | C | Create an open/unassigned/unreviewed ticket with UUID, immutable unique SR/INC ticket_number, ticket_type/category, subject 1..160, description 1..8,000, null priority, version 1 and timestamps. Active requester/category and matching category type required. |
+| T-C02 | C | Scoped get/list with selected filters, stable created_at sorting (ID tie-breaker), limit/offset and minimal GET /api/v1/me/work-history from retained events. The manager can list reviewed=false to see pending review. |
+| T-C03 | C | An active IT Manager reviews a pending open ticket with priority, eligible assignment and expected_version. P1 assigns the acting manager; P2–P4 require an active it_member in the category. Persist review metadata and one combined event atomically. Two competing reviews produce one success and one 409. |
+| T-C04 | C | Validate lifecycle/handler/requester rules below. Resolve with explanation; incidents also require root cause. Retain atomic history and version checks; never auto-close a ticket. |
+| T-C05 | C, later | Add employee-visible comments/private-note policy and related access/closure tests. |
+| T-C06 | C, later | Manager reassignment/reprioritization is one atomic operation that revalidates role/category rules, version and history. Do not change priority alone and leave an ineligible assignee. |
+| T-X01 | All | Integrate contracts, real-PG race/rollback tests, OpenAPI, sanitized logs and xh/jq demo. Record scope, identity limitations and exact-commit evidence. |
 
-User deactivation or any role change making an assignee ineligible must return
-409 while that user holds any assigned, non-closed ticket. Under the single-role
-model, both agent-to-employee and agent-to-admin changes remove agent
-eligibility. An admin reassigns/unassigns open
-work or reassigns in-progress work first. Resolved work must be closed by the
-requester/admin, or reopened and reassigned, before removing its agent's
-eligibility. Deactivation invalidates sessions. No silent ticket reassignment
-or deletion of conversation/history is allowed.
+Any user status/role change that invalidates an assigned non-closed ticket is
+blocked with 409 under the shared transaction lock. This applies to managers
+holding P1 and members holding P2–P4, including a member promoted to manager.
+Membership removal only governs member-assigned category work. Resolve/close
+the work or, once the follow-up exists, use reviewed reassignment before removing
+eligibility. Do not skip guards while waiting for the tickets schema.
 
-## Ticket lifecycle
+## Review, assignment and lifecycle
 
-| From | To | Allowed actor and condition |
+A new ticket has status open, no assignee and no review stamps. Its priority is
+null. POST /api/v1/tickets/{id}/review accepts priority, expected_version and an
+assignee_id for P2–P4. For P1, the server uses the acting manager; a provided
+assignee_id must equal that actor. Review leaves status open, sets reviewer/time
+and assignee, increments version and appends a reviewed_and_assigned event.
+
+| From | To | Actor and condition |
 | --- | --- | --- |
-| open | in_progress | Assigned agent or admin; an eligible assignee is required |
-| in_progress | resolved | Assigned agent or admin; nonblank resolution explanation required |
-| resolved | closed | Requester or admin |
-| resolved | open | Requester or admin; nonblank reopening reason required; clear assignee so the category can claim it again |
+| open | in_progress | Current assigned handler; manager review completed and eligibility rechecked |
+| in_progress | resolved | Current assigned handler; nonblank resolution, plus root_cause for incident |
+| resolved | closed | Original requester confirms; same rule for P1 and every other priority |
+| resolved | open | Original requester reopens with a nonblank explanation |
 
-Claiming/assigning does not itself start work: an open ticket may have an
-assignee. Assignments can change on open/in-progress tickets; an in-progress
-ticket cannot be unassigned until reassigned. Closed tickets are final in this
-increment. Repeated or other transitions return 409. Nothing automatically
-closes a ticket because a clock expires.
+The display label for resolved is **Awaiting employee confirmation**. Closed
+means the requester accepted the resolution; it is final/read-only in this
+increment. No open/in-progress ticket can jump directly to closed.
 
-Comments are visible to the requester; private staff notes are deferred. Closed
-tickets are read-only, including comments. Category, requester, subject,
-description and priority are immutable after creation in this increment.
-Corrections can be described in comments before closure; metadata editing and
-category transfer are later features. Ticket deletion, bulk updates and file
-uploads are deferred.
+Reopening clears assignee, reviewed_by/reviewed_at and current resolution/root
+cause, while retaining the last priority and all earlier values in events. It
+returns to manager review. Therefore pending review must check open plus no
+assignee/review stamps, not priority IS NULL. Re-review may select a new priority.
 
-## API and quality requirements
+Resolution length is 1..8,000 characters; incident root_cause 1..4,000;
+reopen explanation 1..4,000. Trim/validate nonblank content. Service requests
+use a fulfillment explanation; root cause is optional. New ticket type,
+requester, category, subject and description remain immutable initially.
 
-- Serde validates JSON, bounds and unknown fields; malformed requests return
-  400, validation failures 422, unavailable resources 404 and conflicts 409.
-- Creates return 201 with Location; successful reads/updates return 200;
-  successful idempotent membership writes may return 204. Unsupported content
-  type is 415; excessive bodies are 413. Errors share one documented JSON shape.
-- SQLx binds values; PostgreSQL enforces uniqueness, foreign keys and check
-  constraints. Multi-row changes use transactions and rollback on failure.
-- Tokio/Axum handle concurrent HTTP/DB work. Password hashing must not block
-  an async worker when authentication is implemented.
-- Rust enums model role/status/priority and Result models domain errors.
-  Transition and validation functions form a pure core around an async SQL/HTTP
-  shell. These are useful Rust applications, not features exclusive to Rust.
-- Structured tracing records request IDs, status, latency and ticket IDs;
-  exclude passwords, tokens, ticket descriptions, HR details and comment bodies.
-- OpenAPI documents actual implemented routes, DTOs, errors and access rules.
-  Integration tests use real PostgreSQL, including rollback and concurrency.
+## API, integrity and evidence
 
-## Milestones and P6 interpretation
+- Keep /api/v1 routes. Creates return 201 plus Location; reads/updates 200;
+  successful membership PUT/DELETE 204. Malformed JSON 400; validation 422;
+  unsupported content/body size 415/413; safe server/DB failures 500/503.
+- Validate UUID references and unknown fields. After visibility checks, stale
+  versions, ineligible assignments and conflicting reviews return 409 without
+  partial updates or successful events. Authentication adds 401/403 behavior.
+- Bind SQL values; enforce FK/unique/check constraints. Use PostgreSQL sequences
+  for public references, not MAX()+1. Sequence gaps after rollback are acceptable.
+- Version changes and their events commit together. Shared eligibility locking
+  coordinates user/category/membership changes and ticket review/handling.
+- Keep pure validation/lifecycle functions around async Axum/SQLx orchestration.
+  Use real PostgreSQL for integration/concurrency tests and matching Utoipa
+  OpenAPI for implemented routes. Proposed routes are not working endpoints.
+- Trace request/ticket IDs, status and latency; exclude tokens, passwords,
+  descriptions, root causes and resolution contents from operational logs.
 
-P6 calls its project-management domain an example and emphasizes practical API
-design, relationships, eligibility, validation, concurrency and integration
-testing. This proposal changes the business domain; it does not claim that a
-ticket is literally a P6 project or that every original entity requirement is
-unchanged. Confirm the alternative-domain mapping with the evaluator if needed.
-
-P6's final instruction defers authentication/authorization, estimating around a
-week. A three-day local prototype can prioritize T-A01, T-B01/02, T-C01/02/03/04
-and a small end-to-end demonstration, reducing optional scope as needed.
-T-A02/03 remain required for the requested company application. If deferred,
-record the demo's identity mechanism and access limitations explicitly, use
-synthetic data locally and do not claim employee or HR privacy enforcement.
-
-No completed ticketing tests, business acceptance, production release or cost
-savings have been demonstrated by creating this requirements document.
+P6 permits an alternative domain and focuses on practical HTTP API learning.
+Its closing guidance defers authentication; the owner's requested company
+access remains a separately verified requirement. No rubric score, production
+acceptance, security or completed ticketing tests are claimed by this plan.

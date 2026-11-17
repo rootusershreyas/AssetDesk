@@ -1,308 +1,271 @@
 # A/B/C service handoff
 
-Prepared 2026-11-17. This is the implementation assignment for the selected
-five-table local prototype. Current project files contain Markdown plans only;
-application source, configuration, Docker/PostgreSQL setup, migrations, tests
-and CI still need to be built.
+Updated 2026-11-17 for manager-led IT support. This is the implementation
+assignment, not evidence of completed services. The shared repository contains
+planning documents. B has a local Rust scaffold and a reported successful
+cargo check; this documentation update does not change that user-owned code or
+claim that HTTP/database integration is complete.
 
-Use [DELIVERY.md](DELIVERY.md) for branch setup and synchronization, and
-[REQUIREMENTS.md](REQUIREMENTS.md#first-milestone-and-follow-up-scope) for milestone boundaries.
-The branches below are ownership assignments; their creation is a separate Git
-operation and is not evidence of implemented services.
+Use [requirements](REQUIREMENTS.md) for scope and acceptance,
+[design](DESIGN.md) for contracts and [delivery](DELIVERY.md) for Git/Agile work.
 
-## Shared product context
+## Shared workflow and boundaries
 
-An employee raises an Infra or HR support request. It enters that category's
-queue. An active agent belonging to that category claims it, starts work and
-resolves it with an explanation. The requester closes it or reopens it with a
-reason. Every state/assignment change retains a history event.
+An employee creates a Service Request or Incident. An IT Manager reviews it,
+sets P1–P4 priority and assigns responsibility. P1 is handled personally by the
+reviewing manager; P2–P4 goes to an eligible IT Team Member. The assigned handler
+starts work and submits a resolution. The original requester confirms closure
+or reopens with a reason. All changes retain history.
 
 ```text
-Users (A) + Categories/membership (B)
-  -> Ticket and eligible-agent claim (C)
-  -> Start -> Resolve -> Close or reopen -> Retained history
+Users (A) + Typed categories/membership (B)
+  -> Create ticket -> Manager review and assignment (C)
+  -> Start -> Resolve -> Requester confirms or reopens -> Retained history
 ```
 
-One Rust application and one PostgreSQL database, with separate feature modules.
-Each person owns their module's DTOs, validation, routes, business rules, SQL,
-OpenAPI annotations, tests and documentation. B coordinates shared files and
-database order; coordination does not make B responsible for everyone else's SQL.
+The initial domain is IT support. HR requires a later, separately authorized
+workflow; IT Manager visibility does not grant access to HR requests.
 
-| Member | Branch assignment | Business tables | Initial stories |
+Keep one Rust application and PostgreSQL database, with feature-module ownership.
+Each person supplies DTOs, validation, routes, service rules, bound SQL, OpenAPI,
+tests and documentation. B coordinates shared files and migration order; A/C
+remain responsible for their own service SQL.
+
+| Member | Created branch | Business tables | First milestone |
 | --- | --- | --- | --- |
-| A | feat/support-users | users | T-A01; identity contract for later T-A02/03 |
-| **B: Shreyas** | **feat/support-categories** | **categories, category_agents** | **T-X00 coordination, T-B01/02/03** |
-| C | feat/support-tickets | tickets, ticket_events | T-C01, basic T-C02, claim slice of T-C03, T-C04 |
+| A | feat/support-users | users | User contract/CRUD, role/status rules and actor interface |
+| **B: Shreyas** | **feat/support-categories** | **categories, category_agents** | **Foundation coordination, type-aware category CRUD and IT Member eligibility** |
+| C | feat/support-tickets | tickets, ticket_events | Typed ticket/reference, manager review/assignment, lifecycle and history |
 
-Login/sessions, enforced company access, comments, admin assignment/reassignment,
-advanced queries, notifications and attachments remain follow-up work. Record
-partial T-C02/T-C03 delivery without marking their full parent stories complete.
+Authentication, comments, subcategories, reassignment/reprioritization,
+advanced queries, notifications, dashboards and attachments remain later work.
+Manager review/initial assignment and requester reopening/closure are core.
 
-## Before implementation: agree the shared contract
+## Shared implementation contract
 
-The first foundation PR must establish the new Rust manifest, application state,
-configuration, DB pool/migration startup, JSON errors, health/readiness, logging,
-OpenAPI composition, generic Page<T>, fixture conventions and CI checks.
-B coordinates it; A/C review the contracts before importing them.
+Agree before integrating handlers:
 
-Agree these values together:
-
-- UUID identifiers; timestamptz timestamps; snake_case JSON fields.
-- Roles employee/agent/admin; account_status active/inactive.
-- Ticket states open/in_progress/resolved/closed; priority low/medium/high.
-- Actor context supplies user ID and role. A defines the interface; B/C consume
-  it rather than inventing independent identity headers or role checks.
-- List defaults: limit 20, maximum 100, offset 0; stable ID sorting tie-breaker.
+- Internal UUIDs, timestamptz timestamps and snake_case JSON fields.
+- Roles employee/it_manager/it_member; account_status active/inactive.
+- Types service_request/incident. UUIDs remain PK/FKs; immutable ticket_number
+  uses SR/INC plus a per-type PostgreSQL sequence, such as SR1001 or INC1001.
+- Priorities p1/p2/p3/p4. A new ticket has no final priority until manager review.
+- States open/in_progress/resolved/closed. Resolved means Awaiting employee
+  confirmation; closed means the original requester confirmed the outcome.
+- One actor interface defined by A. B/C consume it rather than inventing
+  independent identity/role headers. Synthetic local actors do not prove login.
+- List default limit 20, maximum 100, offset 0 and deterministic ID tie-breaker.
 - Common errors: 400 malformed, 422 validation, 404 missing/invisible resource,
   409 business/version conflict and safe 500/503 failures. Auth adds 401/403.
-- One transaction-level PostgreSQL eligibility-lock helper, acquired before row
-  locks. All services follow the [transaction contract](DESIGN.md#transactions-and-concurrency-contract).
+- Shared transaction-level PostgreSQL eligibility lock before row locks; see
+  the [transaction contract](DESIGN.md#transactions-and-concurrency-contract).
 
-Existing PostgreSQL data/volume remains intact. Select a separate empty
-development database or document a compatible migration approach before applying
-new migrations. An existing database may contain old SQLx migration history.
+The shared foundation supplies configuration, pool/migration startup, application
+state, JSON errors, health/readiness, logging, OpenAPI composition, Page<T>,
+fixtures and CI. B continues the local scaffold through a small reviewed PR;
+this document does not reset or overwrite it. Before migrations, choose a separate
+empty development database or an explicit compatibility path for retained data.
 
-## A: users and identity contract
+## A: users, roles and identity
 
-### Purpose and handoff
+A answers who may request support, manage IT work or handle assigned tickets.
+B consumes active IT Member records; C consumes requester/manager/assignee
+eligibility. The company target derives identity from validated sessions. The
+local prototype may use documented synthetic actors only.
 
-A answers: who can raise a request, and which accounts are active support agents?
-B uses A's users for category membership. C uses them for requester/assignee
-eligibility. Account roles are domain metadata in the prototype; real identity
-and permission enforcement require the later authentication increment.
+Initial story: T-A01. T-A02/03 remain the authentication/access follow-up.
 
-Input: user name, email, role and permitted account updates.
-Output: a user response with UUID, normalized email, role, account_status and
-timestamps; no credential/session fields in the public response.
-
-### Data and APIs to implement
-
-users fields: id, name, email, role, account_status, created_at, updated_at.
-Enforce normalized unique email, nonblank validated names, valid enum values and
-preservation of referenced users. Do not hard-delete ticket participants.
+users fields: id, name, normalized unique email, role, account_status,
+created_at and updated_at. Preserve referenced accounts through deactivation.
+Public responses exclude credential/session fields.
 
 | Method | Planned endpoint | Result |
 | --- | --- | --- |
-| POST | /api/v1/users | Create account; 201 plus Location |
-| GET | /api/v1/users | Paginated users |
-| GET | /api/v1/users/{id} | User details or 404 |
-| PATCH | /api/v1/users/{id} | Update metadata/role/account_status; 200 |
-
-No public signup or client-selected privileged role is part of the authenticated
-company design. Those routes are admin operations when guards are integrated.
-
-### Files and function responsibilities
+| POST | /api/v1/users | IT Manager creates an account; 201 plus Location |
+| GET | /api/v1/users | Manager-scoped paginated directory |
+| GET | /api/v1/users/{id} | Permitted user details or 404 |
+| PATCH | /api/v1/users/{id} | Manager updates metadata/role/account_status |
 
 | Planned file | Responsibility |
 | --- | --- |
-| src/features/users/model.rs | User, Role and AccountStatus types |
-| src/features/users/dto.rs | Create/update/list input validation and safe UserResponse |
-| src/features/users/repository.rs | Bound SQL create/get/list/update operations |
-| src/features/users/service.rs | Normalization, duplicate mapping, role/status-change rules |
-| src/features/users/routes.rs and mod.rs | HTTP extraction/responses, route export and OpenAPI |
-| A-owned migration and tests/users.rs | Schema/constraints and real-database evidence |
+| src/features/users/model.rs | User, Role and AccountStatus |
+| src/features/users/dto.rs | Validated create/update/list inputs and safe responses |
+| src/features/users/repository.rs | Bound SQL operations |
+| src/features/users/service.rs | Normalization, uniqueness and role/status-change rules |
+| src/features/users/routes.rs and mod.rs | HTTP responses, routing and OpenAPI |
+| A-owned migration and tests/users.rs | Constraints and PostgreSQL evidence |
 
 Suggested functions: validate_user_input, create_user, get_user, list_users,
-update_user and the shared actor/active-user lookup contract.
+update_user and current_actor/active-user contract.
 
-Any change removing agent eligibility, including agent -> admin under the
-single-role enum, must return 409 while assigned non-closed tickets exist.
-The check and update use the shared eligibility lock in one transaction.
-Session revocation becomes part of deactivation when authentication is added.
+Before changing a role/status, check whether it would invalidate any non-closed
+assignment under the shared lock. An IT Manager is eligible for P1; an IT Member
+is eligible for P2–P4 only with category membership. Promotion is not always safe:
+an IT Member changed to manager can become ineligible for existing P2–P4 work.
+The guard depends on C's ticket schema; do not silently skip it when absent.
 
-This guard depends on C's tickets table. Land the ordered shared schema before
-declaring role/status-changing operations complete; never silently skip the
-guard when the table is absent.
+First PR: user migration and create/get/list with normalization, duplicate email
+409, invalid-input, missing-record and pagination tests. Then integrate guarded
+updates/deactivation and supply synthetic employee/manager/member fixtures.
 
-### First slice and acceptance
-
-Start with the users migration, pure normalization and create/get/list. Add
-metadata updates and the guarded status/role mutations after schema integration.
-The first small PR should include real-PG tests and matching OpenAPI/examples.
-
-Required cases: valid creation, email normalization, duplicate email 409, invalid
-input, missing user, pagination, inactive account persistence and blocked
-eligibility-removing changes while assigned work exists. A also supplies
-synthetic requester/admin/agent fixtures for B/C tests.
-
-Later T-A02/03: login/logout, password setup/hashing, session expiry/revocation,
-admin bootstrap and cross-user/category permission tests. Those stories are not
-completed by CRUD or by accepting a synthetic actor in a local demo.
+Authentication follow-up: first-manager setup, password lifecycle, login/logout,
+session expiry/revocation, inactive-user rejection and backend scope tests.
+User CRUD or a supplied demo actor does not complete that increment.
 
 ## B: categories and support membership — Shreyas
 
-### Purpose and handoff
+B answers what support is requested and which IT Members are eligible. C uses
+B's typed-category and membership rules during creation and manager assignment.
 
-B answers: what kinds of support can employees request, and who may handle each
-category? A category is a queue such as Infra/HR, not the requester's department.
-C consumes active-category and eligible-agent queries when creating/claiming
-tickets. New categories are data changes, not Rust enum changes.
+Initial stories: T-X00 coordination and T-B01/02/03; T-B04 subcategories is later.
 
-Input: category name/description/is_active and a user ID for membership.
-Output: normalized category responses and eligible support membership records.
+categories fields for the first milestone: id, ticket_type, name, description,
+is_active, created_at and updated_at. Trim names, require 1..80 characters,
+bound description at 1,000 and enforce case-insensitive uniqueness within each
+ticket_type. The same category name may exist separately for requests/incidents.
+Category ticket_type is immutable after creation.
 
-### Data and APIs to implement
-
-categories fields: id, name, description, is_active, created_at, updated_at.
-Names are trimmed, 1..80 characters and unique ignoring case. Description is
-bounded at 1,000 characters. category_agents uses composite key(category_id,
-user_id), foreign keys to categories/users and joined_at.
+category_agents uses composite key(category_id, user_id), foreign keys and
+joined_at. Only active it_member accounts join this mapping. A reviewing P1
+manager does not need category membership; C applies that separate priority rule.
 
 | Method | Planned endpoint | Result |
 | --- | --- | --- |
-| POST | /api/v1/categories | Create category; 201 plus Location |
-| GET | /api/v1/categories | Paginated category discovery |
-| GET | /api/v1/categories/{id} | Category details or 404 |
+| POST | /api/v1/categories | Create typed category; 201 plus Location |
+| GET | /api/v1/categories | Discover categories filtered by ticket_type |
+| GET | /api/v1/categories/{id} | Permitted details or 404 |
 | PATCH | /api/v1/categories/{id} | Update name/description/is_active |
 | GET | /api/v1/categories/{id}/agents | List support membership |
-| PUT | /api/v1/categories/{id}/agents/{user_id} | Add eligible agent idempotently; 204 |
-| DELETE | /api/v1/categories/{id}/agents/{user_id} | Remove membership when allowed; 204 |
+| PUT | /api/v1/categories/{id}/agents/{user_id} | Manager adds eligible member idempotently; 204 |
+| DELETE | /api/v1/categories/{id}/agents/{user_id} | Manager removes membership when allowed; 204 |
 
-### Files and function responsibilities
+The /agents URI names the support mapping; the actual role value is it_member.
+Category/membership writes are IT Manager operations in the authenticated target.
 
 | Planned file | Responsibility |
 | --- | --- |
-| src/features/categories/model.rs | Category and category-agent records |
-| src/features/categories/dto.rs | Category/membership inputs, filters and responses |
-| src/features/categories/repository.rs | Category SQL and membership operations |
-| src/features/categories/service.rs | Normalization, activation and eligibility rules |
+| src/features/categories/model.rs | Category, TicketType contract and membership records |
+| src/features/categories/dto.rs | Typed category inputs, filters and safe responses |
+| src/features/categories/repository.rs | Category/membership SQL |
+| src/features/categories/service.rs | Normalization, activation and membership eligibility |
 | src/features/categories/routes.rs and mod.rs | HTTP behavior, route export and OpenAPI |
-| B-owned migration and tests/categories.rs | Constraints and real-database evidence |
+| B-owned migration and tests/categories.rs | Constraints and real-DB evidence |
 
 Suggested functions: validate_category_input, create_category, get_category,
-list_categories, update_category, add_agent, remove_agent and list_agents.
-Agree is_eligible_agent with C: it must run inside the caller's transaction
-rather than starting a separate transaction or trusting a previously read flag.
+list_categories, update_category, add_member, remove_member and list_members.
+Share is_eligible_member with C inside the caller's transaction. Do not open an
+unrelated transaction or treat an earlier eligibility read as current.
 
-Only active users with role agent can join support categories; one agent may
-join several. Duplicate PUT is idempotent. Category deactivation blocks new
-tickets but preserves existing work/history. Removing membership with assigned,
-non-closed work returns 409 under the shared eligibility lock.
+Deactivation stops new tickets but preserves existing work. Removal with assigned,
+non-closed work returns 409 under the shared lock. Membership creation depends
+on A's users schema; removal guards depend on C's tickets schema. C owns matching
+category.ticket_type to the ticket and checking activity during creation.
 
-Membership creation depends on A's users table. Membership-removal guards depend
-on C's tickets table. Integrate those migrations before advertising complete
-removal behavior. C owns checking category activity during ticket creation.
+First PR: finish the shared foundation with A/C review. Then typed category
+create/get/list, followed by PATCH and membership. Verify trimming/bounds,
+case-insensitive duplicates within type, same-name cross-type categories,
+invalid types, pagination, duplicate PUT, inactive/non-member-role rejection and
+removal/configuration races against manager assignment.
 
-### First slice and acceptance
+Subcategory follow-up: add one-level parent_id within categories, require the
+same ticket_type as its root and inherit root membership. Coordinate C's
+subcategory reference/validation; do not add a sixth business table or expose
+an unimplemented subcategory field in the first milestone.
 
-Your first implementation task is the small shared foundation PR, reviewed by
-A/C. Then implement category create/get/list, followed by PATCH and membership.
+## C: tickets, manager review and lifecycle
 
-Required cases: valid category, trim/case handling, duplicate name 409, invalid
-lengths, missing category, activation changes, pagination, duplicate membership
-PUT, inactive/non-agent membership rejection and removal blocked by open work.
-Work with C to prove category deactivation and membership removal cannot race
-ticket creation/claim into invalid state.
+C combines A's users with B's categories. The inputs are ticket_type, category_id,
+subject and description. New tickets are open, unassigned, unreviewed, version 1
+and priority null. Manager review sets the authoritative priority/assignment.
 
-B coordinates migration names/order and shared app/router/error/OpenAPI changes.
-Keep database setup/run notes current; do not rewrite A/C migrations independently.
+Core stories are T-C01/02/03/04. T-C05 comments and T-C06 changes to reviewed
+priority/assignment remain follow-up work.
 
-## C: ticket workflow and history
+Tickets retain UUID id, ticket_number, requester/category/type, nullable assignee,
+subject/description, status, nullable priority, reviewed_by/reviewed_at,
+resolution/root_cause, version and timestamps. Subject is 1..160 characters;
+description is 1..8,000. Initial requester/type/category/content stays immutable.
+Use per-type database sequences for unique references, never MAX()+1.
 
-### Purpose and handoff
-
-C turns A's users and B's queues into a complete request lifecycle. The service
-validates requester/category eligibility, shows the correct queue, records one
-responsible agent and preserves what happened over time.
-
-Input: category_id, subject, description and optional priority; then claim/status
-actions with expected_version and resolution/reopen explanations.
-Output: ticket details/pages and ordered event history.
-
-### Data and APIs to implement
-
-tickets fields: id, requester_id, category_id, nullable assignee_id, subject,
-description, status, priority, positive version, created_at and updated_at.
-New tickets are open/unassigned/version 1; priority defaults to medium.
-Subject is 1..160 characters; description is 1..8,000. Initial metadata is
-immutable in this milestone. The actor context supplies requester identity.
-
-ticket_events records id, ticket_id, actor_id, event_type, applicable old/new
-state/assignee, explanation, resulting_version and created_at. State-change
-versions are unique per ticket; event history is append-only in application APIs.
+ticket_events stores actor, type, old/new values needed to explain the change,
+explanation, resulting_version and time. One state/assignment mutation produces
+one event/version. Review and assignment are one combined event, not two events
+that collide with the ticket/version uniqueness rule.
 
 | Method | Planned endpoint | Result |
 | --- | --- | --- |
-| POST | /api/v1/tickets | Create request; 201 plus Location |
-| GET | /api/v1/tickets | Category/status filtering, stable created_at sort and pagination |
-| GET | /api/v1/tickets/{id} | Visible ticket details or 404 |
-| POST | /api/v1/tickets/{id}/claim | Eligible agent claims open/unassigned ticket |
-| PATCH | /api/v1/tickets/{id}/status | Apply a permitted lifecycle transition |
-| GET | /api/v1/tickets/{id}/events | Paginated, deterministic history |
-
-### Files and function responsibilities
+| POST | /api/v1/tickets | Create typed request/incident; 201 plus Location |
+| GET | /api/v1/tickets | Scoped category/type/status/priority/reviewed filters, stable sort and pagination |
+| GET | /api/v1/tickets/{id} | Visible details or 404 |
+| POST | /api/v1/tickets/{id}/review | Manager sets priority and assignment atomically |
+| PATCH | /api/v1/tickets/{id}/status | Start, resolve, confirm closure or reopen |
+| GET | /api/v1/tickets/{id}/events | Scoped, deterministic history |
+| GET | /api/v1/me/work-history | Own historical-work metadata without unrestricted ticket access |
 
 | Planned file | Responsibility |
 | --- | --- |
-| src/features/tickets/model.rs | TicketStatus, Priority, Ticket and TicketEvent |
-| src/features/tickets/dto.rs | Create/list/claim/status inputs and response types |
-| src/features/tickets/repository.rs | Scoped queries, locked mutations and event inserts |
-| src/features/tickets/service.rs | Pure transitions plus actor/version/eligibility orchestration |
+| src/features/tickets/model.rs | TicketType/Priority/Status and ticket/event records |
+| src/features/tickets/dto.rs | Create/list/review/status inputs and safe responses |
+| src/features/tickets/repository.rs | Scoped queries, locked mutations and event persistence |
+| src/features/tickets/service.rs | Pure transitions plus actor/priority/assignment/version rules |
 | src/features/tickets/routes.rs and mod.rs | HTTP behavior, route export and OpenAPI |
-| C-owned migration and tests/tickets.rs | Ticket/history constraints, integration and concurrency cases |
+| C-owned migration and tests/tickets.rs | References, constraints, history and races |
 
 Suggested functions: create_ticket, get_ticket_scoped, list_tickets_scoped,
-claim_ticket, validate_transition, change_status and list_events.
+review_and_assign_ticket, validate_transition, change_status and list_events.
+Use one shared TicketType definition agreed with B, not independent mismatched
+copies. Review input includes expected_version and priority; P2–P4 also requires
+an eligible assignee. For P1, derive the acting manager as assignee and reject a
+conflicting supplied ID. Manager review keeps status open and increments version.
+Pending review means open with no assignee or review stamps; a reopened ticket
+may retain a priority. The manager queue uses reviewed=false, not priority=null.
 
 ```text
-open -> in_progress -> resolved -> closed
-                          |
-                          +-> open (reopen with reason; clear assignee)
+open (manager review) -> open (reviewed/assigned) -> in_progress
+ -> resolved (awaiting requester confirmation) -> closed
+                            |
+                            +-> open (reopen; manager review again)
 ```
 
-Claim increments version but keeps status open. Starting requires an eligible
-assignee. Resolving requires an explanation; closing/reopening requires the
-requester or permitted admin action. Closed tickets reject further mutation.
+Only the assigned handler starts/resolves. Resolution is required for all types;
+incident resolution additionally needs root_cause. Only the original requester
+confirms/closes or reopens their resolved ticket, including P1. The handling
+manager gets no P1 closure shortcut unless also the original requester.
 
-For every claim/state change: acquire the shared eligibility lock, lock ticket,
-recheck actor/eligibility/state/version, update exactly once, insert event and
-commit together. A stale/competing change returns 409 without a successful
-event. In the authenticated target, an invisible ticket returns 404 before
-revealing business-rule details. Apply visibility predicates in SQL before
-filtering, pagination or any future counts.
+PATCH status input uses status and expected_version, resolution/root_cause when
+resolving and explanation when reopening. Trim nonblank values and enforce
+resolution 1..8,000 characters, incident root_cause 1..4,000 and reopening
+explanation 1..4,000.
 
-### First slice and acceptance
+Reopening clears assignee, review stamps and current resolution/root cause,
+retains the last priority/history and returns to pending manager review. Closed
+tickets reject mutation. Reassignment/reprioritization is later work and must
+revalidate the priority/assignee combination atomically.
 
-Start pure transition functions and DTOs while A/B bootstrap their schemas.
-Land the ticket/history migration after users/categories/membership, then
-create/get/list, claim and lifecycle in small reviewable slices.
+Current IT Members see assigned tickets and their own requests. Former handlers
+receive only their own historical-work projection from events; assignment history
+alone does not grant access to the ticket's current details/conversation. Managers
+see all IT tickets; employees see their own. Apply scopes before SQL pagination.
 
-Required cases: active category/requester checks, invalid DTOs, correct default
-state/version, stable pagination, invalid category membership, one successful
-concurrent claim, stale-version conflict, allowed/forbidden transitions,
-resolution/reopen explanations and rollback if event persistence fails.
+First PR: pure rules/DTOs and ticket/event schema after A/B migrations, then
+create/get/list. Add review/assignment and lifecycle in small PRs. Test reference
+uniqueness/type prefix, category/type mismatch, pending defaults, P1-manager and
+P2–P4-member eligibility, stale versions, competing manager reviews (one success,
+one 409, one event), requester-only closure, incident root cause, reopen resets,
+rollback and history visibility. No self-claim endpoint belongs to this milestone.
 
-Admin assignment/reassignment, comments, free-text search, advanced sorts and
-company authentication are later slices. A/B help C with fixtures, concurrency
-tests and the end-to-end demo because C owns the largest business-rule surface.
+## Integration and acceptance
 
-## Integration order and parallel work
+Merge the reviewed planning baseline into develop, then the foundation and
+ordered schema: users -> typed categories/membership -> tickets/events. A/B
+configuration guards become complete only after C's schema and real race tests.
+A/B help C with fixtures, concurrency tests and the end-to-end demonstration.
+Sync each branch by normally merging updated origin/develop; see DELIVERY.md.
 
-| Checkpoint | Required dependency | What can proceed in parallel |
-| --- | --- | --- |
-| Planning baseline | Reviewed plans/setup into develop | All read contracts and refine their first story |
-| Shared foundation | New Rust/runtime/config/error/DB/test/CI PR reviewed into develop | A/B/C draft their pure validation, DTOs and test cases |
-| Ordered schemas | users -> categories/membership -> tickets/events | Module implementation against agreed field contracts |
-| Eligibility integration | All five tables plus shared lock/helper available | A status/role guard, B removal guard and C claim tests |
-| End-to-end acceptance | Working routes, errors, OpenAPI and real-PG checks | A/B fixtures/tests/docs; C closes workflow defects |
-
-After each shared prerequisite is merged, fetch and merge origin/develop into
-the member's branch using normal pushes. Do not copy files from another branch,
-force-push shared history or mark missing dependencies as passed. Detailed Git
-commands and merge policy belong in [DELIVERY.md](DELIVERY.md).
-
-## Definition of Done and team demonstration
-
-A story/slice is Done when its agreed criteria work, meaningful tests pass on
-the exact commit, OpenAPI/run notes match, another teammate reviews the PR and
-deferred scope remains visible. Use the company's actual Agile cadence and
-record progress, blockers, demo feedback and a retrospective improvement.
-
-Shared demo: create users -> Infra/HR categories -> agent memberships -> create
-Infra ticket -> demonstrate one winning claim -> start -> resolve -> reopen or
-close -> inspect history. Include invalid membership, stale version and rollback
-evidence. Document the synthetic identity mechanism before a local prototype
-demo; do not present it as tested company authentication or HR confidentiality.
-
-Related context: [requirements](REQUIREMENTS.md), [design](DESIGN.md),
-[delivery and branching](DELIVERY.md).
+A slice is Done when agreed criteria work, tests pass for that commit, OpenAPI
+and run notes match, another teammate reviews, and unfinished scope stays visible.
+Demo a Service Request and Incident, manager P1/P2 assignment paths, resolution,
+requester confirmation/reopening and retained history. Document synthetic local
+identity explicitly; company use requires the separate authentication/access
+increment. No changed ticketing implementation or passed application tests are
+claimed by this documentation update.
