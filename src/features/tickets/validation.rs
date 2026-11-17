@@ -3,6 +3,8 @@ pub enum ValidationError {
     InvalidSubject,
     InvalidDescription,
     InvalidExplanation,
+    InvalidResolution,
+    InvalidRootCause,
 }
 
 pub fn validate_ticket_text(
@@ -26,6 +28,20 @@ pub fn validate_ticket_text(
 pub fn validate_reopening_reason(explanation: &str) -> Result<(), ValidationError> {
     if !(1..=4_000).contains(&explanation.trim().chars().count()) {
         return Err(ValidationError::InvalidExplanation);
+    }
+    Ok(())
+}
+
+pub fn validate_resolution(resolution: &str) -> Result<(), ValidationError> {
+    if !(1..=8_000).contains(&resolution.trim().chars().count()) {
+        return Err(ValidationError::InvalidResolution);
+    }
+    Ok(())
+}
+
+pub fn validate_root_cause(root_cause: &str) -> Result<(), ValidationError> {
+    if !(1..=4_000).contains(&root_cause.trim().chars().count()) {
+        return Err(ValidationError::InvalidRootCause);
     }
     Ok(())
 }
@@ -76,6 +92,32 @@ mod tests {
             assert_eq!(
                 validate_reopening_reason(invalid),
                 Err(ValidationError::InvalidExplanation)
+            );
+        }
+    }
+
+    #[test]
+    fn validates_resolution() {
+        assert_eq!(validate_resolution("Replaced network adapter"), Ok(()));
+        assert_eq!(validate_resolution(&"é".repeat(8_000)), Ok(()));
+
+        for invalid in ["", " \n ", &"x".repeat(8_001)] {
+            assert_eq!(
+                validate_resolution(invalid),
+                Err(ValidationError::InvalidResolution)
+            );
+        }
+    }
+
+    #[test]
+    fn validates_root_cause() {
+        assert_eq!(validate_root_cause("Faulty network adapter"), Ok(()));
+        assert_eq!(validate_root_cause(&"é".repeat(4_000)), Ok(()));
+
+        for invalid in ["", " \t ", &"x".repeat(4_001)] {
+            assert_eq!(
+                validate_root_cause(invalid),
+                Err(ValidationError::InvalidRootCause)
             );
         }
     }
