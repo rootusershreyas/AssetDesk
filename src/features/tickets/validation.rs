@@ -2,6 +2,7 @@
 pub enum ValidationError {
     InvalidSubject,
     InvalidDescription,
+    InvalidExplanation,
 }
 
 pub fn validate_ticket_text(
@@ -19,6 +20,13 @@ pub fn validate_ticket_text(
         return Err(ValidationError::InvalidDescription);
     }
 
+    Ok(())
+}
+
+pub fn validate_reopening_reason(explanation: &str) -> Result<(), ValidationError> {
+    if !(1..=4_000).contains(&explanation.trim().chars().count()) {
+        return Err(ValidationError::InvalidExplanation);
+    }
     Ok(())
 }
 
@@ -57,5 +65,18 @@ mod tests {
             validate_ticket_text("Subject", &"x".repeat(8_001)),
             Err(ValidationError::InvalidDescription)
         );
+    }
+
+    #[test]
+    fn validates_reopening_reason() {
+        assert_eq!(validate_reopening_reason("Issue persists"), Ok(()));
+        assert_eq!(validate_reopening_reason(&"é".repeat(4_000)), Ok(()));
+
+        for invalid in ["", " \n ", &"x".repeat(4_001)] {
+            assert_eq!(
+                validate_reopening_reason(invalid),
+                Err(ValidationError::InvalidExplanation)
+            );
+        }
     }
 }
