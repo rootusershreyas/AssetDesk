@@ -1,174 +1,144 @@
-# A/B/C delivery and Agile records
+# Delivery, Agile and Git workflow
 
-Planning baseline: 2026-11-17. Product name pending. All ticketing stories begin
-in Backlog. The working tree contains Markdown documentation only; application
-code/manifests/Compose/environment setup/migrations/tests/CI are absent. This document
-proposes work and records no completed planning meeting, review or release.
+Planning baseline: 2026-11-17. Final product name pending. The repository
+contains Markdown documentation only; application code, runtime configuration,
+Compose, migrations, tests and CI still need implementation. Plans do not
+establish completed ceremonies, acceptance or a working application.
 
-Use the [short-notice profile](SHORT_NOTICE_DESIGN.md) for the selected first
-milestone and P1–P6 demonstration map. The full service ownership below includes
-follow-up work; comments, admin reassignment, advanced queries and authentication
-are outside that initial five-table prototype.
+Use [requirements](REQUIREMENTS.md) for scope/acceptance,
+[design](DESIGN.md) for API/data/transaction contracts and
+[team tasks](TEAM_TASKS.md) for each member's files, functions and first PR.
 
-## Ownership and created branches
+## Ownership and dependencies
 
-| Member | Service | Created implementation branch |
+| Member | Initial ownership | Created branch |
 | --- | --- | --- |
-| A | Users, authentication context and authorization integration | feat/support-users |
-| **B: Shreyas** | **Categories, agent membership and shared DB coordination** | **feat/support-categories** |
-| C | Tickets, assignment, status, comments and events | feat/support-tickets |
+| A | Users and account lifecycle; identity interface | feat/support-users |
+| B: Shreyas | Shared foundation coordination, categories and agent membership | feat/support-categories |
+| C | Tickets, claiming, lifecycle and history | feat/support-tickets |
 
-The branches were created locally and on origin from the same origin/develop
-commit, b56c317. Their initial contents are that documentation baseline, without
-application code. Review the documentation baseline PR into develop, then normally
-merge updated origin/develop into each branch. T-X00 remains a real prerequisite:
-B coordinates a newly bootstrapped Rust/runtime/config/DB/test/CI foundation PR and A/C
-review it before feature branches depend on it. Existing
-PostgreSQL data/volume is retained; agree a separate empty development database
-or a reviewed compatibility approach before running new migrations.
+The three branches were created from origin/develop at b56c317. Their initial
+contents are the earlier documentation baseline. Main already holds the updated
+project documentation; bring the planning baseline into develop through review,
+then merge updated origin/develop into each service branch.
 
-For a self-contained briefing, see the [complete team handoff](TEAM_HANDOFF.md).
-The [detailed assignments](TEAM_TASKS.md) specify each person's APIs/files/tests;
-the [branching guide](BRANCHING.md) gives checkout, sync and review instructions.
+Implementation order:
 
-One application, one database, three module owners. Each person implements
-their own DTOs, routes, services, SQL, OpenAPI annotations and tests. Shared
-files need coordination rather than concurrent independent rewrites.
+1. B coordinates T-X00: a small Rust/config/DB/error/logging/OpenAPI/test/CI
+   foundation PR, reviewed by A/C. A can prepare user DTOs/validation while C
+   prepares pure lifecycle rules and tests against the agreed contracts.
+2. Agree the database baseline before applying migrations. Existing external
+   PostgreSQL data/volumes may remain; use a separate empty development database
+   or a reviewed compatibility path rather than silently resetting data.
+3. Merge schema in dependency order: users, categories/membership, tickets/events.
+   Each owner authors their service SQL; B coordinates migration names/order.
+4. Integrate ticket creation, eligible-agent claim, lifecycle and atomic events.
+   A/B help C with fixtures, race tests and the end-to-end demonstration.
+5. Complete A's eligibility-removing role/status guards and B's membership-removal
+   guards only after C's ticket schema exists and integrated checks pass.
 
-## A: users and identity
+## Proposed three-day milestone
 
-1. T-A01: user migration, role/status enums, normalization and CRUD/list DTOs.
-2. Define the user lookup/eligibility contract needed by B and C; preserve
-   referenced accounts and coordinate role/status changes removing eligibility.
-3. Agree the authenticated-context/guard contract before B/C wire target routes.
-4. T-A02: implement login/logout, hashing, session expiry/revocation and
-   inactive-user behavior in a separately estimated increment.
-5. T-A03 with B/C: enforce and test all permissions, including scoped reads.
+This is a capacity proposal including foundation work, not a delivery guarantee.
+The prototype uses users, categories, category_agents, tickets and ticket_events.
 
-First PR: T-A01 with real-database tests, OpenAPI and an explicit note if
-authentication is deferred. No authentication implementation currently exists
-in this working tree.
-
-## B: your categories and support membership service
-
-1. Agree users FK/table names and migration order with A; agree membership and
-   assignment eligibility rules with C. Record database compatibility before the
-   new baseline is applied; preserve existing PostgreSQL data/volume.
-2. T-B01: category migration/model, create/update validation and repository.
-   Create/get/list/PATCH routes; normalize names and map duplicate constraints
-   to 409. Search/paginate consistently with the shared contract.
-3. T-B02: active/inactive behavior; existing tickets remain accessible while new
-   creation is blocked. C implements the ticket-create side of that contract.
-4. T-B03: membership migration and idempotent PUT/DELETE/list routes. Reject
-   inactive/non-agent users; coordinate shared eligibility locking with A/C.
-5. Add unit tests for normalization/bounds and PostgreSQL tests for duplicate
-   names, persistence, idempotency and assignment-removal restrictions. Add
-   access-negative cases once A's guards are integrated.
-6. Document implemented routes/examples and hand off the exact membership
-   query/transaction helper to C. Update acceptance evidence in your PR.
-
-First coding slice: **T-B01 category create/get/list**, using A's agreed user
-contract only when adding membership. Avoid mixing ticket handlers or login
-implementation into your categories PR.
-
-## C: ticket workflow
-
-1. T-C01/02: ticket migration, create/get/list, validation and filters; depend on
-   A users and B categories. Category/requester identity is immutable initially.
-2. T-C03: claim and admin assignment/reassignment with versions, eligibility
-   checks, shared locking and transactional event history.
-3. T-C04: pure lifecycle validation, status endpoint and resolution/reopen rules.
-4. T-C05: comments/events and deterministic paginated reads; all target reads
-   apply ticket visibility, including nested endpoints.
-5. Real-PG tests cover concurrent claim, stale versions, forbidden eligibility,
-   rollback, filtering and transition errors. Coordinate scoped-access tests
-   with A and membership/deactivation races with B.
-
-First PR: create/get/list and valid category handling. Follow with small claim/
-assignment and lifecycle PRs rather than a single unreviewable implementation.
-
-## Proposed three-day prototype milestone
-
-This is an initial capacity proposal, not a delivery promise or a three-day
-enterprise replacement. Budget the new shared foundation before feature work;
-no executable scaffold currently exists in this working tree.
-
-| Day | A | B | C | Integrated checkpoint |
+| Day | A | B | C | Checkpoint |
 | --- | --- | --- | --- | --- |
-| 1 | User contract, migration and basic CRUD | Category model/create/get/list | Agree ticket DTOs, pure rules and migration | Reviewed data/API contracts; migrations apply cleanly |
-| 2 | User update/deactivation and tests | Category update/deactivation; membership if ready | Ticket create/get/list; claim and version checks | Synthetic requester -> category queue -> successful single claim |
-| 3 | Fix integration; document identity limitations; help C test | Test/handoff B; resolve schema conflicts; help C test races | Core transitions/event history | Real-DB tests, OpenAPI, xh/jq demo and teammate review |
+| 1 | User contract, schema and create/get/list | Foundation coordination; category schema and create/get/list | Ticket types, pure rules and schema contract | Reviewed shared contracts and ordered migration plan |
+| 2 | User updates/guards and fixtures | Category activation and agent membership | Ticket create/get/list and eligible-agent claim | Synthetic request reaches the correct queue; one successful claim |
+| 3 | Integration tests and documentation | Test races, integration and setup notes | Lifecycle, version checks and event history | Real-PG tests, matching OpenAPI, CLI demo and teammate review |
 
-At planning, select stories to fit actual capacity. Comments, advanced queries
-and admin reassignment remain follow-up work. Preserve core validation,
-migration integrity and concurrency checks; record incomplete story slices.
+Comments, admin reassignment, advanced queries and authentication remain
+follow-up work. Record partial T-C02/T-C03 slices without marking their full
+parent stories Done. Preserve validation, transaction integrity and meaningful
+concurrency tests when reducing scope.
 
-P6 explicitly defers authentication/authorization; user CRUD can be demonstrated
-without asserting access enforcement. If the prototype follows that deferral,
-document how synthetic actors are supplied and run it locally with synthetic
-data. Arbitrary actor IDs are not authentication. Company employee/HR use is
-blocked until T-A02/03 and negative access tests pass. Do not quietly drop this
-requested capability or mark role names as equivalent to secure permissions.
+P6 recommends deferring authentication/authorization. A local synthetic-user
+prototype can demonstrate business rules; role metadata or a demo actor selector
+does not prove identity or HR privacy. T-A02/03 remain company-use requirements,
+including sessions, revocation and cross-user/category access tests.
 
-## Agile lifecycle and records
-
-Use the company's existing Agile framework and cadence; these are not yet
-specified. The three-day proposal is a milestone, not evidence of a Scrum sprint.
-
-| Activity | Current artifact | Required record/evidence |
-| --- | --- | --- |
-| Discovery and requirements | README and REQUIREMENTS.md | Business reviewer, examples, scope decisions |
-| Refinement/planning | Story IDs and owner split above | Selected stories, acceptance, dependencies and capacity |
-| Design | DESIGN.md | Reviewed API/schema/transaction decisions |
-| Implementation | Feature PRs | Code, migrations, matching OpenAPI and unit/PG tests |
-| Integration and review | PR into develop | Exact-commit CI, different teammate's review and working demo |
-| Feedback and improvement | Iteration record below | User feedback, retrospective action and owner |
-| Release | Checklist below | Version/commit, reviewer/operator, verification and recovery record |
-| Maintenance | Change/incident record | Reproduction, impact, fix/test PR and follow-up |
-
-Definition of Ready: a story has an owner, observable acceptance criteria,
-agreed dependencies/contracts and a realistic slice.
-
-Definition of Done: implemented behavior matches acceptance/OpenAPI, meaningful
-checks pass for that commit, a teammate reviews it, documentation/evidence is
-updated and deferred scope remains visible. A local prototype is not Done for
-authenticated-company-use stories.
+## Branching and review
 
 ```text
-Iteration/milestone, dates and goal:
-Selected story IDs, owner, reviewer and dependencies:
-Daily progress, blocker and next action:
-PR/commit, check commands/results and acceptance evidence:
-Demo feedback and business reviewer:
-Incomplete stories and reason for replanning:
-Retrospective action, owner and follow-up:
+feature branch -> teammate-reviewed PR -> develop
+             develop -> reviewed release PR -> main
 ```
 
-## Verification and release gates
+Use a clean checkout. For B, whose remote branch already exists:
 
-Each owner supplies tests for their rules; integrated tests must prove:
+```bash
+git fetch origin
+git switch --track origin/feat/support-categories
+```
 
-- Duplicate category names and invalid inputs yield the documented errors.
-- Inactive categories reject new tickets while existing ones can progress.
-- Nonmembers/inactive users cannot become ticket assignees.
-- Two overlapping claims produce one success, one 409 and one claim event.
-- Stale state changes fail, and event-write failures roll back state changes.
-- Membership removal/deactivation cannot race an assignment into invalid state.
-- Target permissions hide other employees' and unrelated categories' HR tickets,
-  including through list/count, comments and history.
+A/C substitute their branch from the ownership table. If the local branch
+already exists, use git switch with its local name, without --track. Preserve
+uncommitted work before switching; do not use another member's dirty checkout.
 
-After bootstrapping the Rust application and test/CI setup, run formatting,
-Clippy and tests against real PostgreSQL; check actual OpenAPI and an xh/jq
-create -> claim -> resolve -> close demo. Those commands cannot run from this
-planning-only baseline. No ticketing test has been run by writing these plans.
+From your feature branch, after committing current work:
 
-- [ ] Exact release candidate passes its required checks and teammate review.
-- [ ] Target authentication/authorization tested before company use.
-- [ ] Runtime docs/configuration/migrations match the candidate.
-- [ ] Operator, environment, HTTPS/secrets and backup/restore procedure recorded.
-- [ ] Migration/recovery rehearsed on a separate disposable database.
-- [ ] Business acceptance and known limitations recorded.
+```bash
+git fetch origin
+git merge origin/develop
+```
 
-Feature/docs PRs target develop; release PRs target main. Use normal pushes and
-required review; never force-push or rewrite history to hide past activity.
-Publishing changes, repository protection and a release remain separate actions.
+Resolve conflicts, run affected checks, commit any resolution and push normally.
+Use small PRs with story IDs, API/schema effects, dependencies, exact-commit
+verification and remaining limitations. Another teammate reviews before merge.
+Prefer merge commits for this milestone's continuing service branches; do not
+rewrite shared history, force-push or directly push to main/develop. Delete a
+service branch when its milestone work is integrated.
+
+Owner-requested documentation-only updates to main use a normal PR containing
+only the requested documentation, without rule-bypass flags. Implementation
+continues through develop. No release or protection enforcement is implied.
+
+Recommended rules: require one teammate approval and resolved conversations on
+main/develop, block direct/force pushes and deletion there, and allow normal
+feature pushes while blocking force pushes. Add required CI checks only after
+the workflow exists and has a known successful run. These are recommendations;
+repository settings must be verified/configured separately.
+
+## Agile working agreement
+
+Use the company's actual Agile framework and cadence; neither is specified yet.
+Track stories through Backlog -> Ready -> In progress -> Review/Test -> Done.
+Refine acceptance/dependencies, select an achievable increment, demonstrate it,
+record feedback and choose one retrospective improvement with an owner.
+
+Ready means a story has an owner, observable criteria, agreed dependencies and
+a small implementation slice. Done means its acceptance matches the working
+API/OpenAPI, relevant checks pass for that commit, a teammate reviews it and
+documentation/evidence is current. Deferred company-access work stays visible.
+
+For each increment record: dates/goal, selected story IDs, owner/reviewer,
+blockers, PR/commit, verification results, demonstration feedback, unfinished
+scope and one improvement/follow-up. Keep these records in the relevant PR or
+team's existing board; a separate progress file is not required.
+
+## Verification, release and maintenance
+
+Core acceptance must cover invalid inputs and duplicate names/emails, inactive
+category/user behavior, membership eligibility, stable filtering/pagination,
+valid/invalid transitions, stale versions, rollback on event failure and two
+competing claims yielding one success, one 409 and one successful claim event.
+Test configuration-change/assignment races once the shared schema is integrated.
+Company use additionally requires real-session and forbidden-access cases.
+
+Once the Rust foundation exists, run formatting, Clippy and tests against a
+dedicated real PostgreSQL test database, then demonstrate create -> claim ->
+start -> resolve -> reopen/close with xh/jq and inspect actual OpenAPI/logs.
+These application checks cannot run from today's documentation-only baseline.
+
+Before a release:
+
+- [ ] Exact candidate passes required checks, teammate review and business acceptance.
+- [ ] Runtime/configuration/migrations/OpenAPI/run instructions match the candidate.
+- [ ] Authentication/authorization pass before real employee or HR use.
+- [ ] Operator/environment, secure bootstrap/secrets and known limitations are recorded.
+- [ ] Backup/restore and migration recovery are rehearsed on a separate disposable database.
+
+Capture defects with reproduction, expected/actual behavior, affected story,
+commit/environment and sanitized evidence. Prioritize with the reviewer, assign
+an owner, add a regression check and review the fix through the same PR flow.

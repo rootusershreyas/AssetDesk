@@ -1,8 +1,7 @@
 # Internal support ticketing requirements
 
-Proposed 2026-11-17 following the owner's scope change, CR-004. Nothing in this
-document is a claim of implemented ticketing behavior or completed acceptance.
-The project name remains undecided.
+Status: planned, 2026-11-17. Ticketing behavior and acceptance are not yet
+implemented. The project name remains undecided.
 
 Current baseline: Markdown documentation only. Application code, manifests,
 Compose/environment configuration, migrations, tests and CI have been removed
@@ -10,10 +9,6 @@ from this working tree; Git history remains. Existing database containers and
 data/volumes outside the repository are unaffected by this file cleanup. A future
 foundation must create the runtime/configuration and record database compatibility
 before migrations run, preferably using a separate empty development database.
-
-The [short-notice profile](SHORT_NOTICE_DESIGN.md) selects the five-table local
-prototype from this broader target. Its reference patterns and P1–P6 evidence
-map do not mark deferred features or standalone course exercises complete.
 
 ## Purpose and boundaries
 
@@ -29,6 +24,25 @@ Examples:
 
 HR tickets record requests and responses. They do not calculate payroll, change
 attendance balances or implement statutory compliance.
+
+## First milestone and follow-up scope
+
+The proposed three-day local prototype uses five business tables: users,
+categories, category_agents, tickets and ticket_events. Include the shared
+foundation, user/category management, agent membership, ticket create/get/list,
+eligible-agent claim, four-state lifecycle and transactional event history.
+
+The selected T-C02 slice uses category/status filters, created_at ascending or
+descending with an ID tie-breaker, limit 1..100 (default 20) and nonnegative
+offset (default 0). The T-C03 slice implements agent claim only. Deliver matching
+OpenAPI, unit/real-PostgreSQL tests and an xh/jq demonstration.
+
+Comments, admin reassignment, advanced queries, notifications, attachments and
+SLA automation remain follow-up work. T-A02 login/sessions and T-A03 access
+enforcement remain required before company use. A synthetic local actor is
+not proof of identity or HR privacy. Record partial T-C02/T-C03 delivery without
+marking the whole parent story Done. Standalone course exercises remain separate
+learning evidence; the P1–P6 map and product references are in the root README.
 
 ## Roles and target access
 
