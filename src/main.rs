@@ -1,3 +1,5 @@
+mod config;
+
 use axum::{Json, Router, routing::get};
 use serde::Serialize;
 
@@ -11,12 +13,24 @@ async fn health() -> Json<HealthResponse> {
 }
 
 #[tokio::main]
-async fn main() -> std::io::Result<()> {
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    match dotenvy::from_path(".env") {
+        Ok(()) => {}
+        Err(error) if error.not_found() => {}
+        Err(_) => {
+            return Err("Cannot load .env; check its format and permissions".into());
+        }
+    }
+
+    let config = config::Config::from_env()?;
+
     let app = Router::new().route("/health", get(health));
 
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:3000").await?;
+    let listener = tokio::net::TcpListener::bind(config.address).await?;
 
-    println!("Listening on http://127.0.0.1:3000");
+    println!("Listening on http://{}", config.address);
 
-    axum::serve(listener, app).await
+    axum::serve(listener, app).await?;
+
+    Ok(())
 }
