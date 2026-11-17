@@ -41,7 +41,7 @@ the project at /tmp/assetdesk-legacy-cleanup.GGOMvm/old-implementation.tar.gz.
 The generated build cache was excluded. This temporary backup is not a durable
 archive or a database backup; prior committed code also remains in Git history.
 
-## Resulting implementation baseline
+## Baseline after CR-005
 
 This is a planning-and-database-setup baseline. No current Rust package,
 application executable, API routes, generated OpenAPI, app CI or tests exist.
@@ -69,3 +69,28 @@ and reviewed feature PRs for implementation. The clean planning/setup baseline
 is prepared for review separately; teammates sync after it and the new shared
 foundation reach develop. [BRANCHING.md](BRANCHING.md) records the procedure.
 Branch creation does not merge protected branches or alter repository rules.
+
+## CR-007: Markdown-only repository and main overview
+
+The owner clarified that the entire active project should retain Markdown files
+only and requested the updated project README on main. Removed compose.yaml,
+.env.example, .gitignore, the ignored local .env, local editor settings and
+regenerated build output.
+Current project content is README/documentation and Markdown review/issue
+templates. Git metadata/history and external database data/volumes are retained.
+
+The removed configuration, including private local environment settings, is
+backed up outside the project at
+/tmp/assetdesk-markdown-cleanup.k5Ewmk/configuration.tar.gz with private access.
+It is not committed or published and is not a database backup.
+Local editor settings are stored separately in editor-settings.tar.gz in the
+same private backup directory.
+
+The README now presents the ticketing workflow, five-table milestone, A/B/C
+ownership/branches, stack, P1–P6 learning and linked documentation without
+claiming a runnable application or existing setup files. All runtime,
+configuration, migration, test and CI artifacts are future foundation work.
+
+The explicit documentation update for main uses a separate normal PR from a
+main-based documentation branch. Application feature work continues through
+develop; no force push, rule bypass or database reset is part of this request.

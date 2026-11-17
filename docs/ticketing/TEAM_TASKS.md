@@ -1,8 +1,9 @@
 # A/B/C service handoff
 
 Prepared 2026-11-17. This is the implementation assignment for the selected
-five-table local prototype. Current files contain plans and PostgreSQL setup;
-application source, migrations, tests and CI still need to be built.
+five-table local prototype. Current project files contain Markdown plans only;
+application source, configuration, Docker/PostgreSQL setup, migrations, tests
+and CI still need to be built.
 
 Use [BRANCHING.md](BRANCHING.md) for branch setup and synchronization, and
 [SHORT_NOTICE_DESIGN.md](SHORT_NOTICE_DESIGN.md) for milestone boundaries.

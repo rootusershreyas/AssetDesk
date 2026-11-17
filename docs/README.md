@@ -5,7 +5,9 @@
 The owner changed the product direction on 2026-11-17 to employee support
 tickets for Infra, HR and future categories. The final name is pending.
 Ticketing is planned. The old executable source and build files have been
-removed; this baseline contains plans and PostgreSQL setup only.
+removed. The current repository keeps Markdown documentation only; application
+source, PostgreSQL setup/configuration, migrations and CI must be created in
+the foundation increment.
 
 | Current guide | Purpose |
 | --- | --- |

@@ -1,10 +1,11 @@
 # Ticketing design proposal
 
 Status: planned, 2026-11-17. See [requirements](REQUIREMENTS.md) for acceptance
-and [delivery](DELIVERY.md) for ownership. The working tree contains plans and
-PostgreSQL configuration only; old application code, manifests, migrations,
-tests and CI have been removed. Git history and existing PostgreSQL data/volume
-are preserved. New migration startup needs an explicit compatibility decision.
+and [delivery](DELIVERY.md) for ownership. The working tree contains Markdown
+documentation only; application code, manifests, Compose/environment configuration,
+migrations, tests and CI are absent. Git history and existing database data/volumes
+outside the repository are preserved. Future configuration and migration startup
+need an explicit compatibility decision.
 
 The [short-notice profile](SHORT_NOTICE_DESIGN.md) selects a five-table prototype.
 Comments, admin reassignment, advanced queries and authentication below remain
@@ -177,8 +178,9 @@ contract selected by A; cached roles must not silently bypass deactivation.
 
 ## Foundation and migration plan
 
-Bootstrap a new Rust manifest and shared configuration, pool/startup, error
-shape, readiness, tracing, CI and test fixtures. Historical implementation can
+Bootstrap a new Rust manifest, Compose/environment configuration and ignore
+rules, shared configuration, pool/startup, error shape, readiness, tracing, CI
+and test fixtures. Historical implementation can
 be inspected through Git, but is not present or assumed reusable in this tree.
 
 Before startup applies migrations, inspect the selected database and record the

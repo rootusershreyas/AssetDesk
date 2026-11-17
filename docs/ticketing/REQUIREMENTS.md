@@ -4,12 +4,12 @@ Proposed 2026-11-17 following the owner's scope change, CR-004. Nothing in this
 document is a claim of implemented ticketing behavior or completed acceptance.
 The project name remains undecided.
 
-Current baseline: ticketing plans and PostgreSQL configuration only. The old
-implementation has been removed from this working tree; its Git history remains.
-There is no Rust manifest, application, migration set, test suite or CI workflow
-yet. Existing PostgreSQL data/volume is preserved. Before new migrations run,
-record a database compatibility decision, preferably a separate empty development
-database for the new baseline.
+Current baseline: Markdown documentation only. Application code, manifests,
+Compose/environment configuration, migrations, tests and CI have been removed
+from this working tree; Git history remains. Existing database containers and
+data/volumes outside the repository are unaffected by this file cleanup. A future
+foundation must create the runtime/configuration and record database compatibility
+before migrations run, preferably using a separate empty development database.
 
 The [short-notice profile](SHORT_NOTICE_DESIGN.md) selects the five-table local
 prototype from this broader target. Its reference patterns and P1–P6 evidence
@@ -62,7 +62,7 @@ implementation.
 
 | ID | Owner | Story and acceptance |
 | --- | --- | --- |
-| T-X00 | B coordinates; A/C review | Bootstrap a new Rust manifest/runtime, config, DB startup, errors, logging, CI and test setup; agree database compatibility before applying a new migration baseline. Review the foundation PR into develop before feature branches depend on it. Only plans and PostgreSQL configuration currently exist. |
+| T-X00 | B coordinates; A/C review | Bootstrap a new Rust manifest/runtime, Compose/environment configuration and ignore rules, DB startup, errors, logging, CI and test setup; agree database compatibility before applying a new migration baseline. Review the foundation PR into develop before feature branches depend on it. Only Markdown plans currently exist. |
 | T-A01 | A | Admin manages users: UUID, name, normalized unique email, role, active/inactive status and timestamps; invalid fields rejected; duplicate email 409; user list supports pagination. Preserve users referenced by ticket history. |
 | T-A02 | A | Login/logout and shared active-user context: password hashes, revocable/expiring sessions, inactive-user rejection, safe errors and no credentials in logs. Real access enforcement requires this increment. |
 | T-A03 | A + B/C | Enforce the permission matrix on all routes, including list/count queries and comments/events; negative tests show another employee and an Infra-only agent cannot inspect an HR ticket. |

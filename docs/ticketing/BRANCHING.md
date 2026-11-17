@@ -35,7 +35,7 @@ and published in one atomic normal push. None includes the removed application
 source. They initially contain the existing develop documentation baseline,
 not the new planning files or a Rust application.
 
-The cleaned plans/setup are prepared separately on docs/support-ticketing-plan
+The Markdown-only plans are prepared separately on docs/support-ticketing-plan
 for review into develop. Feature PRs do not exist yet: an unchanged branch has
 no implementation diff to review. This work does not directly push to or merge
 main/develop.
@@ -43,7 +43,7 @@ main/develop.
 ## Immediate integration dependencies
 
 1. Review the planning/cleanup PR into develop so everyone receives the same
-   project scope, Compose setup, team tasks and contracts.
+   project scope, team tasks and contracts.
 2. Each member fetches and normally merges origin/develop into their branch.
 3. B coordinates the fresh T-X00 Rust/config/DB/error/CI foundation in a small
    first PR; A/C review it. A and C can work on agreed DTOs, validation and pure
@@ -97,9 +97,10 @@ Resolve any conflicts, run the checks relevant to the changed code, then commit
 and push normally. Merging an updated develop avoids rewriting already shared
 commits. Do not use rebase followed by a force push in this team workflow.
 
-Before the Rust foundation exists, use documentation/Compose checks. After it
-exists, use fmt, Clippy and real-PostgreSQL tests as appropriate. The cleanup
-baseline has no Cargo project or active app CI and cannot run those checks yet.
+Before the Rust foundation exists, use documentation checks. The current
+repository contains Markdown only; recreate configuration and Compose in T-X00.
+After the foundation exists, use fmt, Clippy and real-PostgreSQL tests as
+appropriate. There is no Cargo project or active app CI in this baseline.
 
 Example A commit/PR flow after implementation exists:
 
@@ -118,6 +119,11 @@ Another teammate reviews before merging. Never stage .env or unrelated files.
 
 Repository inspection on 2026-11-17 confirmed merge commits are enabled. This
 recommendation does not change the repository's available merge methods.
+
+The owner separately requested a documentation-only main README update. Prepare
+that bootstrap update as a normal PR against main, containing Markdown files
+only and preserving the ordinary implementation workflow below. Do not bypass
+any repository rule or include application code in that documentation update.
 
 - Prefer merge commits for the current service PRs, preserving ancestry while
   a service branch has further milestone work. This avoids a shared-history
@@ -152,7 +158,7 @@ No repository rules/settings were modified by documenting this recommendation.
 
 | PR | Owner | Review focus |
 | --- | --- | --- |
-| Clean plans and project setup | Planning branch; team review | Current scope, deleted legacy files and shared instructions |
+| Markdown-only plans | Planning branch; team review | Current scope, removed configuration/legacy files and shared instructions |
 | T-X00 shared foundation | B; A/C review | Build/startup, DB baseline, errors, health/readiness, CI and test setup |
 | T-A01 user create/get/list and migration | A | Normalization, uniqueness, DTOs and real-DB tests |
 | T-B01 category create/get/list and migration | B | Category contract, unique names and real-DB tests |

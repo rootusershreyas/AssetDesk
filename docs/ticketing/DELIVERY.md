@@ -1,8 +1,8 @@
 # A/B/C delivery and Agile records
 
 Planning baseline: 2026-11-17. Product name pending. All ticketing stories begin
-in Backlog. The working tree retains plans and PostgreSQL setup; old application
-code/manifests/migrations/tests/CI have been removed. This document
+in Backlog. The working tree contains Markdown documentation only; application
+code/manifests/Compose/environment setup/migrations/tests/CI are absent. This document
 proposes work and records no completed planning meeting, review or release.
 
 Use the [short-notice profile](SHORT_NOTICE_DESIGN.md) for the selected first
@@ -20,9 +20,9 @@ are outside that initial five-table prototype.
 
 The branches were created locally and on origin from the same origin/develop
 commit, b56c317. Their initial contents are that documentation baseline, without
-application code. Review the clean planning/setup PR into develop, then normally
+application code. Review the documentation baseline PR into develop, then normally
 merge updated origin/develop into each branch. T-X00 remains a real prerequisite:
-B coordinates a newly bootstrapped Rust/runtime/DB/test/CI foundation PR and A/C
+B coordinates a newly bootstrapped Rust/runtime/config/DB/test/CI foundation PR and A/C
 review it before feature branches depend on it. Existing
 PostgreSQL data/volume is retained; agree a separate empty development database
 or a reviewed compatibility approach before running new migrations.

@@ -28,8 +28,9 @@ these requests; it does not itself repair hardware or change payroll records.
 | Base branches | main and develop; see BRANCHING.md for the service branches |
 | Current remote develop | Earlier documentation baseline; does not yet contain the Rust foundation |
 | Local planning branch | docs/support-ticketing-plan in AssetDesk-B |
-| Working baseline | Ticketing plans, PostgreSQL Compose/.env configuration and review templates |
+| Working baseline | Markdown ticketing plans and review templates only |
 | Rust application/manifests | Removed with the old implementation; a new foundation must be bootstrapped |
+| Compose/environment/ignore configuration | Absent; future foundation work must create it |
 | Migrations/tests/CI | Old files removed; new ticketing setup is planned |
 | PostgreSQL data/volume | Preserved; choose database compatibility before applying a new baseline |
 | New A/B/C implementation branches | Created from origin/develop; see BRANCHING.md for synchronization |
@@ -37,9 +38,12 @@ these requests; it does not itself repair hardware or change payroll records.
 First bootstrap and review a new foundation PR into develop; then start feature
 branches from that shared base. The old implementation was removed from the
 working tree; Git history remains available for reference. There is no current
-Rust manifest, executable, test suite or CI pipeline to run.
+Rust manifest, executable, Compose/environment setup, test suite or CI pipeline
+to run. Existing service branches should synchronize through the reviewed
+documentation baseline and then the new foundation in develop.
 
-Existing database names and volumes stay unchanged while naming is undecided.
+The file cleanup does not stop existing database containers or delete external
+data/volumes. Database names remain an operator decision while naming is undecided.
 Before applying new migrations, record a separate empty development database
 or an explicitly reviewed compatibility approach. Existing databases may retain
 old schema and SQLx migration records. Do not delete their data/volume or treat
@@ -330,7 +334,8 @@ escalation and reminders can become later stories after this workflow works.
 ## 11. Implementation order and three-day proposal
 
 1. **Shared foundation, T-X00:** B coordinates bootstrapping a Rust manifest and
-   runtime/config/DB/error/logging/CI/test setup, reviewed into develop by A/C.
+   runtime/Compose/environment/ignore rules/DB/error/logging/CI/test setup,
+   reviewed into develop by A/C.
    Record database compatibility before startup runs new migrations.
 2. **Data contracts:** agree user fields, category fields, table/migration names,
    actor type, error codes, pagination and the shared transaction helper.
@@ -369,9 +374,15 @@ Never rely on a committed default admin password or trust client-supplied roles.
 
 ## 12. Local run and future manual demo
 
-**Current database setup only:** the following starts PostgreSQL, not an API.
-Commands are for an operator to run; nothing is started by this document.
-Preserve an existing .env instead of overwriting it.
+**Current repository:** Markdown documentation only. There is no Compose file,
+environment template, Cargo manifest or executable setup to run. Existing
+external database containers/data may still exist; their presence does not
+supply configuration to this repository.
+
+**Future local setup:** after the foundation creates Compose configuration,
+an environment template, suitable ignore rules and the Rust runtime, the
+operator can follow commands such as these. They cannot run from today's
+documentation-only baseline and are not executed by this document.
 
 ```bash
 cd /home/technoidentity/Project/AssetDesk-B
@@ -380,10 +391,10 @@ docker compose up -d --wait db
 docker compose ps db
 ```
 
-Database: 127.0.0.1:5434. There is no current API listener, Cargo manifest or
-migration startup. `cargo run`, health/readiness requests and Cargo tests are
-future steps after bootstrapping. The proposed API address is 127.0.0.1:3000.
-Choose the new database/migration compatibility strategy before that startup.
+Proposed development addresses: PostgreSQL 127.0.0.1:5434 and API
+127.0.0.1:3000; define them in future configuration. `cargo run`, health/readiness
+requests and Cargo tests are future steps after bootstrapping. Choose the
+database/migration compatibility strategy before startup.
 
 **Future authenticated ticketing demo:** after implementation, fixtures/bootstrap
 must provide admin, requester and Infra-agent sessions plus category membership.

@@ -4,10 +4,11 @@ Date: 2026-11-17. Status: proposed implementation baseline; ticketing code is
 not built. Final name remains pending. This document selects a small prototype
 from the broader [requirements](REQUIREMENTS.md); deferred items remain backlog.
 
-Current files provide planning and PostgreSQL setup only. Old code, manifests,
-migrations, tests and CI have been removed from the working tree; Git history
-remains. Existing PostgreSQL data/volume is preserved. Bootstrap the new Rust
-foundation and record database compatibility before any new migrations run.
+Current files are Markdown documentation only. Code, manifests, Compose and
+environment configuration, migrations, tests and CI are absent; Git history
+remains. Existing database containers/data/volumes outside the repository are
+unaffected. Bootstrap the new Rust/configuration foundation and record database
+compatibility before any new migrations run.
 
 ## Product statement
 
@@ -182,7 +183,8 @@ Suggested milestone sequence:
 
 1. **Foundation checkpoint:** bootstrap the Rust manifest/runtime, configuration,
    DB/error/logging, tests and CI, then review this shared base into develop.
-   Only plans and DB configuration remain. Record a separate empty development
+   Only Markdown plans remain; Compose/environment setup must also be created.
+   Record a separate empty development
    database or reviewed compatibility approach before new migrations run; retain
    existing PostgreSQL data/volume.
 2. **Day 1:** agree schema/DTO/error/actor/transaction contracts; A users,
@@ -191,7 +193,7 @@ Suggested milestone sequence:
    fixture and eligibility tests. Demonstrate create -> claim -> start -> resolve.
 4. **Day 3:** finish reopen/close and failure cases, real concurrent tests,
    OpenAPI, xh/jq demo, run notes and teammate review. Package the app in a small
-   Dockerfile after the core passes; reuse Compose for PostgreSQL.
+   Dockerfile after the core passes; add Compose configuration for PostgreSQL.
 5. If capacity falls short, report unfinished criteria and replan. Do not replace
    real concurrency/rollback checks with extra endpoints or cosmetic work.
 
