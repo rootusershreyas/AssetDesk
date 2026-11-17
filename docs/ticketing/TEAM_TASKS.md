@@ -5,8 +5,8 @@ five-table local prototype. Current project files contain Markdown plans only;
 application source, configuration, Docker/PostgreSQL setup, migrations, tests
 and CI still need to be built.
 
-Use [BRANCHING.md](BRANCHING.md) for branch setup and synchronization, and
-[SHORT_NOTICE_DESIGN.md](SHORT_NOTICE_DESIGN.md) for milestone boundaries.
+Use [DELIVERY.md](DELIVERY.md) for branch setup and synchronization, and
+[REQUIREMENTS.md](REQUIREMENTS.md#first-milestone-and-follow-up-scope) for milestone boundaries.
 The branches below are ownership assignments; their creation is a separate Git
 operation and is not evidence of implemented services.
 
@@ -289,7 +289,7 @@ tests and the end-to-end demo because C owns the largest business-rule surface.
 After each shared prerequisite is merged, fetch and merge origin/develop into
 the member's branch using normal pushes. Do not copy files from another branch,
 force-push shared history or mark missing dependencies as passed. Detailed Git
-commands and merge policy belong in [BRANCHING.md](BRANCHING.md).
+commands and merge policy belong in [DELIVERY.md](DELIVERY.md).
 
 ## Definition of Done and team demonstration
 
@@ -305,4 +305,4 @@ evidence. Document the synthetic identity mechanism before a local prototype
 demo; do not present it as tested company authentication or HR confidentiality.
 
 Related context: [requirements](REQUIREMENTS.md), [design](DESIGN.md),
-[delivery records](DELIVERY.md) and [team handoff](TEAM_HANDOFF.md).
+[delivery and branching](DELIVERY.md).

@@ -23,9 +23,12 @@ Reopening a resolved ticket returns it to `open` without an assignee and retains
 its earlier resolution in history. Tickets do not close automatically.
 
 Examples include an Infra request for a faulty charger and an HR request for an
-attendance correction. Jira Service Management, ServiceNow and Zendesk inform
-selected queue/lifecycle patterns; the [design scope](docs/ticketing/SHORT_NOTICE_DESIGN.md)
-records the project's own decisions and limits.
+attendance correction. The workflow takes selected ideas from
+[Jira Service Management's request classification](https://support.atlassian.com/jira-service-management-cloud/docs/what-are-request-types-in-itsm),
+[ServiceNow's defined lifecycle](https://www.servicenow.com/docs/r/it-service-management/incident-management/c_IncidentManagementStateModel.html)
+and [Zendesk's resolution/closure distinction](https://support.zendesk.com/hc/en-us/articles/8263915942938-About-the-ticket-lifecycle-and-ticket-statuses).
+Our application uses flat categories, a fixed four-state workflow and manual
+requester closure; the first milestone is defined below.
 
 ## First milestone
 
@@ -89,13 +92,11 @@ Use normal pushes and small PRs. Merge updated `origin/develop` into feature
 branches without rewriting shared history. Repository protection and required
 checks must be verified/configured separately; this README does not claim they
 are enforced. The current branch baseline and synchronization steps are in the
-[branching guide](docs/ticketing/BRANCHING.md).
+[delivery and branching guide](docs/ticketing/DELIVERY.md).
 
 ## Documentation
 
 - [A/B/C assignments, files, APIs and acceptance tests](docs/ticketing/TEAM_TASKS.md)
-- [Short-notice scope and P1–P6 mapping](docs/ticketing/SHORT_NOTICE_DESIGN.md)
-- [Requirements and target permissions](docs/ticketing/REQUIREMENTS.md)
+- [Milestone scope, requirements and target permissions](docs/ticketing/REQUIREMENTS.md)
 - [Architecture, data model and transactions](docs/ticketing/DESIGN.md)
-- [Agile delivery, verification and release records](docs/ticketing/DELIVERY.md)
-- [Branching and integration](docs/ticketing/BRANCHING.md)
+- [Agile delivery, branching, verification and release](docs/ticketing/DELIVERY.md)

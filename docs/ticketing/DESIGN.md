@@ -7,7 +7,7 @@ migrations, tests and CI are absent. Git history and existing database data/volu
 outside the repository are preserved. Future configuration and migration startup
 need an explicit compatibility decision.
 
-The [short-notice profile](SHORT_NOTICE_DESIGN.md) selects a five-table prototype.
+The [first milestone](REQUIREMENTS.md#first-milestone-and-follow-up-scope) selects a five-table prototype.
 Comments, admin reassignment, advanced queries and authentication below remain
 part of the broader target rather than the first milestone.
 
@@ -53,6 +53,11 @@ and ticket history. A unique index on a trimmed/lowercased category key prevents
 case-only duplicates. Add indexes for requester/status/created time,
 category/status/created time and assignee/status. Comments/events use
 (ticket_id, created_at, id) for deterministic reads.
+
+For the P4 complexity demonstration, inspect EXPLAIN for a representative
+category/status queue query. Apply filtering/ordering before bounded pagination;
+measure the selected plan rather than assuming an index always wins on a small
+dataset. PostgreSQL performs ordering; custom sorting exercises remain separate.
 
 ```mermaid
 erDiagram
