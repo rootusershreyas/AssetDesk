@@ -3,8 +3,10 @@ mod db;
 mod features;
 mod telemetry;
 
+use axum::routing::post;
 use axum::{Json, Router, body::Body, http::Request, routing::get};
 use axum::{extract::State, http::StatusCode};
+use features::categories::routes::create_category;
 use serde::Serialize;
 use sqlx::PgPool;
 use std::time::Duration;
@@ -62,6 +64,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app = Router::new()
         .route("/health", get(health))
         .route("/ready", get(ready))
+        .route("/api/v1/categories", post(create_category))
         .with_state(pool)
         .layer(
             TraceLayer::new_for_http().make_span_with(|request: &Request<Body>| {
