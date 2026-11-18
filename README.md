@@ -1,220 +1,124 @@
-# ReleaseReady
+# IT Support Ticket Management API
 
-A Rust REST API for managing programmers, teams, projects, and tasks, with a release-readiness report that explains unfinished work and blockers.
+A planned Rust REST API for employee **Service Requests** and **Incidents**.
+IT Managers review and assign tickets; IT Team Members handle assigned work;
+the original requester confirms whether the resolution is accepted.
 
-**Status: planning only.** No application code, database schema, or runnable service has been created yet. This README is the starting agreement for a three-person, three-day P6 project.
+**Status:** workflow/contracts are planned. B has locally initialized a Rust
+scaffold and reported a successful cargo check; the shared ticketing API,
+migrations and integration tests are not implemented. The final product name
+is undecided; the repository is currently named AssetDesk.
 
-## Project goal
-
-Answer: **Is this project's recorded checklist complete, and what still needs attention?**
-
-```text
-Register programmers
-    -> Create a team and designate its lead
-    -> Create a project owned by the team
-    -> Create and assign tasks
-    -> Track work and handle conflicting updates
-    -> Retrieve readiness and blocker information
-```
-
-Readiness reflects the recorded task checklist. It does not certify software quality, execute tests, or deploy software.
-
-## Scope and technology
-
-Implement all programmer, team, project, and task requirements from P6, then add one derived readiness endpoint.
-
-| Technology | Purpose |
-| --- | --- |
-| Rust and Tokio | Domain models, error handling, async runtime |
-| Axum | HTTP routing, extraction and responses |
-| SQLx and PostgreSQL | Async queries, migrations, transactions and constraints |
-| Serde | JSON request and response models |
-| tracing and log | Structured logging and log interoperability |
-| Utoipa / OpenAPI | Document implemented endpoints and errors |
-| Rust integration tests | Verify HTTP behavior with real PostgreSQL |
-| Docker Compose | Reproducible local PostgreSQL setup |
-| GitHub Actions | Formatting, linting and tests |
-| xh and jq | Manual API checks and evaluation demonstration |
-
-Keep this release API-only. Authentication/authorization is deferred as instructed in P6. Bookings, AI integration, notifications, dashboards, payroll, and deployment automation are outside this iteration.
-
-## Required data model
-
-Use UUID identifiers and timestamp fields with time zones. Keep the original P6 field sets.
-
-| Table | Fields |
-| --- | --- |
-| `programmers` | ID, name, email, active/inactive status, creation timestamp |
-| `teams` | ID, name, description, lead ID, creation timestamp |
-| `team_members` | Team ID and programmer ID as a composite primary key |
-| `projects` | ID, name, description, owning team ID, status, creation timestamp |
-| `tasks` | ID, project ID, title, description, status, priority, optional assignee ID, optional due date, creation/update timestamps, version |
-
-Relationships:
-
-- Programmers can belong to multiple teams.
-- Every team has one lead who is also a member.
-- A team owns multiple projects; a project belongs to exactly one team.
-- A project contains multiple tasks; a task belongs to exactly one project.
-- A task may be unassigned. An assignee must belong to the project's owning team.
-
-Statuses:
+## Workflow
 
 ```text
-Programmer: active | inactive
-Project:    planned | active | completed | archived
-Task:       todo | in_progress | blocked | done
-Priority:   low | medium | high
+Manager prepares users, typed categories and member mappings
+  -> Employee raises a Service Request or Incident
+  -> System supplies UUID plus SR1001 / INC1001 reference
+  -> IT Manager reviews priority and assigns responsibility
+       P1: acting IT Manager handles it personally
+       P2/P3/P4: eligible IT Team Member handles it
+  -> Assigned handler starts work and records resolution
+  -> Awaiting employee confirmation
+  -> Original requester closes or reopens with a reason
 ```
 
-## Required API operations
+Internal states remain `open -> in_progress -> resolved -> closed`.
+`resolved` displays as **Awaiting employee confirmation**. P1 follows the same
+requester-confirmation rule; the manager has no direct-closure shortcut.
+Reopening returns the ticket unassigned to manager review and preserves the
+earlier resolution/assignment in history. Tickets never close automatically.
 
-All business endpoints use `/api/v1`.
+Examples: a new charger is a Service Request; a Wi-Fi outage is an Incident.
+Initial scope is IT infrastructure. HR remains a future separately authorized
+workflow, with no automatic IT Manager access to HR records.
+The workflow takes selected ideas from
+[Jira Service Management's request classification](https://support.atlassian.com/jira-service-management-cloud/docs/what-are-request-types-in-itsm),
+[ServiceNow's defined lifecycle](https://www.servicenow.com/docs/r/it-service-management/incident-management/c_IncidentManagementStateModel.html)
+and [Zendesk's resolution/closure distinction](https://support.zendesk.com/hc/en-us/articles/8263915942938-About-the-ticket-lifecycle-and-ticket-statuses).
+Our implementation decisions and milestone scope are defined below.
 
-| Resource | Operations |
-| --- | --- |
-| Programmers | Register, retrieve, list, update, deactivate, list assigned tasks |
-| Teams | Create, retrieve/list, update, list/add/remove members, replace lead, list owned projects |
-| Projects | Create, retrieve, list, update, assign/change owning team, change status, list tasks |
-| Tasks | Create, retrieve, list, update, delete, assign/reassign/unassign, change status/priority, filter/sort/paginate |
-| Readiness | `GET /api/v1/projects/{id}/readiness` |
+## Workflow changes
 
-Rules to enforce:
+| Area | Earlier plan | Revised agreement |
+| --- | --- | --- |
+| Roles | Employee / agent / admin | Employee / IT Team Member / IT Manager |
+| Classification | Flat support category | Service Request or Incident, then a type-aware category |
+| Priority | low / medium / high at creation | P1/P2/P3/P4 decided by manager review |
+| Ownership | Eligible agent self-claims | Manager assigns; P1 manager-owned, P2–P4 member-owned |
+| Identity | UUID only | UUID plus immutable SR/INC reference |
+| Resolution | resolved then requester closure | Same four states; resolved explicitly means awaiting requester confirmation for every priority |
+| Member visibility | Category queue | Assigned tickets, own requests and limited own work history |
 
-- Programmer email is unique without considering case.
-- Removing the current lead requires assigning a replacement atomically.
-- Membership and owning-team changes must not invalidate lead or task-assignment rules.
-- Task updates include the current version; successful updates increment it and update the timestamp. Stale updates return `409 Conflict`.
-- Optional task assignment and due date can be cleared explicitly.
-- Collections have bounded pagination and deterministic sorting. Whitelist sort fields and bind SQL values.
-- Agree and document any additional deactivation policy before coding.
+## First milestone
 
-## Readiness feature
+The proposed three-day local prototype covers:
 
-Example response:
+- User creation, retrieval, listing, updates and account deactivation.
+- Type-aware flat categories and category-member mappings.
+- Service Request/Incident creation, SR/INC references and scoped ticket lists.
+- Manager review, P1–P4 assignment rules and optimistic version checks.
+- Resolution/root-cause records, requester confirmation/reopening and atomic events.
+- Basic filtering, stable sorting, pagination and personal work-history metadata.
+- Unit tests, real-PostgreSQL integration tests, OpenAPI and an `xh`/`jq` demo.
 
-```json
-{
-  "project_id": "...",
-  "project_status": "active",
-  "ready": false,
-  "total_tasks": 10,
-  "completed_tasks": 7,
-  "completion_percent": 70,
-  "blocked_tasks": 2,
-  "unfinished_high_priority_tasks": 1,
-  "unassigned_unfinished_tasks": 1,
-  "overdue_unfinished_tasks": 1,
-  "reasons": [
-    "Three tasks remain unfinished",
-    "Two tasks are blocked",
-    "One high-priority task is unfinished"
-  ]
-}
-```
+Five business tables are planned: `users`, `categories`, `category_agents`,
+`tickets` and `ticket_events`.
 
-- `ready` is true only when at least one task exists and all tasks are `done`.
-- Empty projects return `ready: false`, 0 percent completion, and an explanation.
-- Overdue means a task is unfinished and its due date is before the reporting date. Use UTC dates consistently for this version.
-- Completed tasks are excluded from unfinished-work warnings.
-- Calculate readiness from current data; do not store a separate readiness flag.
-- Keep project status independent: reporting readiness does not change it.
-- Keep the calculation pure, passing task data and the reporting date as inputs.
-- Read the report's task data consistently so concurrent changes do not produce contradictory counts.
+Subcategories, comments, reassignment/reprioritization, advanced queries,
+notifications, attachments, SLA automation and dashboards remain follow-up work.
+P6 recommends a separate authentication increment. Company use still requires
+tested login/sessions and backend access rules: employees see own requests,
+members see assigned work, and managers oversee IT tickets. Previous involvement
+does not grant ongoing full-ticket access. Synthetic actors do not prove identity.
 
-## Three-person work division
+## Three-person ownership
 
-Each contributor owns their feature's validation, SQL, HTTP errors, tests, and OpenAPI definitions. Coordinate shared files and migrations before editing them.
-
-### A — Programmers, teams, application foundation
-
-- [ ] Initialize Cargo, Tokio/Axum, configuration, shared errors, router, logging, and health endpoint.
-- [ ] Implement programmer registration, retrieval, listing, updates, and deactivation.
-- [ ] Implement team creation, retrieval/listing, and updates.
-- [ ] Implement membership addition, removal, and listing.
-- [ ] Implement lead replacement and transactional team/initial-membership creation.
-- [ ] Test duplicate email, multiple memberships, invalid lead removal, valid replacement, and rollback.
-
-### B — Shreyas: database coordination, projects, readiness
-
-- [ ] Coordinate PostgreSQL/Compose, SQLx pool, shared application state, and migration order with A and C.
-- [ ] Implement project creation, retrieval, listing, updates, team assignment, and status changes.
-- [ ] Implement the team-project listing.
-- [ ] Validate owning-team changes against existing task assignments.
-- [ ] Implement the pure readiness calculation and readiness endpoint.
-- [ ] Test missing/empty projects, incomplete/complete checklists, blocker counts, due dates, and project-team changes.
-- [ ] Coordinate PostgreSQL integration-test configuration and CI.
-
-### C — Tasks, assignment, query features, concurrency
-
-- [ ] Implement task CRUD with every P6 field.
-- [ ] Implement assignment, reassignment, and unassignment with team-membership validation.
-- [ ] Implement project-task and programmer-task listings.
-- [ ] Implement status/priority changes and optional due dates.
-- [ ] Implement filtering, sorting, bounded pagination, and absent-versus-null PATCH behavior.
-- [ ] Implement version checks and meaningful concurrent-update tests.
-- [ ] Test valid/unassigned tasks, invalid assignments, optional-field clearing, collections, and stale versions.
-
-## Three-day schedule
-
-| Day | A | B | C |
+| Member | Service | Created branch | First deliverable |
 | --- | --- | --- | --- |
-| 1 | App setup and programmer/team basics | Database coordination and project CRUD | Task CRUD |
-| 2 | Membership/lead rules and tests | Readiness report and project integrity | Assignment, collection queries, versions |
-| 3 | Integration, documentation and fixes | Integration, CI and readiness demo | Concurrency checks, integration and fixes |
+| A | Employee/IT Manager/IT Team Member accounts; authentication/access follow-up | `feat/support-users` | User/actor contract, migration and create/get/list |
+| **B: Shreyas** | **Typed categories, member mappings and shared foundation coordination** | **`feat/support-categories`** | **Continue the local foundation; then typed category create/get/list** |
+| C | SR/INC references, manager review/assignment, lifecycle and history | `feat/support-tickets` | Ticket types/rules, schema and create/get/list |
 
-Agree the schema and API shapes at the start of day 1. Setup PRs land early; later features can use valid SQL fixtures while another member's endpoints are unfinished. Preserve day 3 for verification rather than adding features.
+Each owner supplies validation, routes, business rules, SQL, tests, OpenAPI and
+documentation for their service. A/B also help with integrated eligibility and
+concurrency tests. Keep the local Rust work intact; review the shared foundation
+and ordered schema before treating dependent handlers as complete. The expanded
+workflow needs replanning within the tentative three-day prototype capacity.
 
-## Planned project structure
+## Planned stack and learning evidence
 
-This is a proposed layout; these implementation files do not exist yet.
+One Rust application, with feature modules and one PostgreSQL database:
+**Tokio, Axum, SQLx, Serde/JSON, tracing and Utoipa/OpenAPI**.
 
-```text
-src/
-  main.rs
-  lib.rs
-  app.rs
-  config.rs
-  db.rs
-  state.rs
-  error.rs
-  telemetry.rs
-  openapi.rs
-  features/
-    programmers/
-    teams/
-    projects/
-    tasks/
-    readiness/
-migrations/
-tests/
-```
+| Learning | Planned application |
+| --- | --- |
+| P1: Linux and CLI | Environment/process diagnosis, Git and `xh -> jq` pipelines |
+| P2: Rust and information model | Structs/enums, stable IDs, changing state and dated events |
+| P3: ownership, errors and containers | Borrowing, `Vec`, `Option`, `Result`, systematic debugging and Docker |
+| P4: generics, complexity and CI/CD | `Page<T>`, bounded/indexed queries, GitHub Actions and reviewed delivery |
+| P5: SQL, testing and functional core | Constraints/joins/transactions, pure rules and real-DB tests |
+| P6: HTTP APIs | Async handlers, HTTP semantics, validation, concurrency, logs and OpenAPI |
 
-Use small feature modules. Handlers manage HTTP; services coordinate rules/transactions; repository functions execute SQL. Readiness calculation stays independent of Axum and SQLx.
+Standalone course exercises remain separate learning evidence. This project
+does not mark linked-list, sorting or hash-table assignments complete.
 
-## Branch and review workflow
+## Team workflow
 
 ```text
-feature branch -> reviewed PR -> develop
-develop -> tested release PR -> main
+feature branch -> teammate-reviewed PR into develop
+develop -> reviewed release PR into main
 ```
 
-- Create task branches from updated `develop` and target `develop` with feature PRs.
-- Use normal pushes. Do not force-push or rewrite shared history.
-- Keep PRs small; include tests and documentation with the behavior they implement.
-- Another teammate reviews before merge. Suggested rotation: A reviews B, B reviews C, C reviews A.
-- Keep `.env` and real employee/company data out of Git.
-- A new GitHub repository will need its own rules configured; existing EnviroHub settings do not transfer automatically.
+Use normal pushes and small PRs. Merge updated `origin/develop` into feature
+branches without rewriting shared history. Repository protection and required
+checks must be verified/configured separately; this README does not claim they
+are enforced. The current branch baseline and synchronization steps are in the
+[delivery and branching guide](docs/ticketing/DELIVERY.md).
 
-## Final acceptance and demonstration
+## Documentation
 
-- [ ] Every original P6 resource field and operation is implemented.
-- [ ] Invalid lead removal and out-of-team assignment are rejected.
-- [ ] Filtering, sorting, pagination, and stale task versions work.
-- [ ] Readiness explains empty, incomplete, blocked, and complete checklists correctly.
-- [ ] Errors use consistent JSON and HTTP status codes.
-- [ ] Structured logs, OpenAPI, and real-PostgreSQL integration tests are complete.
-- [ ] Formatting, Clippy, and tests pass; setup instructions work from a clean checkout.
-- [ ] Demonstration uses xh/jq: create team/project/tasks, show not-ready, reject invalid operations, finish tasks, show ready.
-
-The first implementation task is A's minimal Cargo/Axum foundation, while B and C agree the database schema and task contract in parallel.
+- [A/B/C assignments, files, APIs and acceptance tests](docs/ticketing/TEAM_TASKS.md)
+- [Milestone scope, requirements and target permissions](docs/ticketing/REQUIREMENTS.md)
+- [Architecture, data model and transactions](docs/ticketing/DESIGN.md)
+- [Agile delivery, branching, verification and release](docs/ticketing/DELIVERY.md)
