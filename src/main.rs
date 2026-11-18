@@ -1,5 +1,6 @@
 mod config;
 mod db;
+mod features;
 mod telemetry;
 
 use axum::{Json, Router, body::Body, http::Request, routing::get};
