@@ -10,17 +10,16 @@ pub enum Priority {
 pub enum TicketStatus {
     Open,
     InProgress,
+    AwaitingEmployeeConfirmation,
     Resolved,
-    Closed,
 }
 impl TicketStatus {
     pub fn can_transition_to(self, next: Self) -> bool {
         matches!(
             (self, next),
             (Self::Open, Self::InProgress)
-                | (Self::InProgress, Self::Resolved)
-                | (Self::Resolved, Self::Closed)
-                | (Self::Resolved, Self::Open)
+                | (Self::InProgress, Self::AwaitingEmployeeConfirmation)
+                | (Self::AwaitingEmployeeConfirmation, Self::Resolved)
         )
     }
 }
@@ -33,12 +32,11 @@ mod tests {
     fn only_documented_transitions_are_allowed() {
         use TicketStatus::*;
 
-        let states = [Open, InProgress, Resolved, Closed];
+        let states = [Open, InProgress, AwaitingEmployeeConfirmation, Resolved];
         let allowed = [
             (Open, InProgress),
-            (InProgress, Resolved),
-            (Resolved, Closed),
-            (Resolved, Open),
+            (InProgress, AwaitingEmployeeConfirmation),
+            (AwaitingEmployeeConfirmation, Resolved),
         ];
 
         for from in states {
@@ -72,7 +70,7 @@ mod pending_review_tests {
     #[test]
     fn pending_review_requires_open_and_cleared_assignment_and_review() {
         use TicketStatus::*;
-        for status in [Open, InProgress, Resolved, Closed] {
+        for status in [Open, InProgress, AwaitingEmployeeConfirmation, Resolved] {
             for has_assignee in [false, true] {
                 for has_reviewer in [false, true] {
                     for has_review_timestamp in [false, true] {
