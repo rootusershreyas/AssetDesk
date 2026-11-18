@@ -88,3 +88,26 @@ mod pending_review_tests {
         }
     }
 }
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct VersionConflict;
+
+pub fn check_version(current: i64, expected: i64) -> Result<(), VersionConflict> {
+    if current == expected {
+        Ok(())
+    } else {
+        Err(VersionConflict)
+    }
+}
+
+#[cfg(test)]
+mod version_tests {
+    use super::*;
+
+    #[test]
+    fn review_requires_the_current_version() {
+        assert_eq!(check_version(2, 2), Ok(()));
+        assert_eq!(check_version(2, 1), Err(VersionConflict));
+        assert_eq!(check_version(2, 3), Err(VersionConflict));
+    }
+}
