@@ -6,6 +6,8 @@ use std::{
 
 pub struct Config {
     pub address: SocketAddr,
+    pub database_url: String,
+    pub database_max_connections: u32,
 }
 
 impl Config {
@@ -25,9 +27,25 @@ impl Config {
         if port == 0 {
             return Err("PORT must be between 1 and 65535".into());
         }
+        let database_url = env::var("DATABASE_URL").map_err(|_| "DATABASE_URL is required")?;
+
+        if database_url.trim().is_empty() {
+            return Err("DATABASE_URL must not be empty".into());
+        }
+
+        let database_max_connections = env::var("DATABASE_MAX_CONNECTIONS")
+            .map_err(|_| "DATABASE_MAX_CONNECTIONS is required")?
+            .parse::<u32>()
+            .map_err(|_| "DATABASE_MAX_CONNECTIONS must be a positive integer")?;
+
+        if database_max_connections == 0 {
+            return Err("DATABASE_MAX_CONNECTIONS must be a positive integer".into());
+        }
 
         Ok(Self {
             address: SocketAddr::new(host, port),
+            database_url,
+            database_max_connections,
         })
     }
 }
