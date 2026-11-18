@@ -173,3 +173,85 @@ mod assignment_tests {
         }
     }
 }
+
+pub struct ReviewState {
+    pub priority: Priority,
+    pub version: i64,
+    pub status: TicketStatus,
+    pub has_assignee: bool,
+    pub has_reviewer: bool,
+    pub has_review_timestamp: bool,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum ReviewError {
+    VersionConflict,
+    NotPendingReview,
+    Assignment(AssignmentError),
+}
+
+/// Selects the assignee for a verified active manager's review.
+pub fn review_ticket<Id: Eq>(
+    ticket: &ReviewState,
+    expected_version: i64,
+    manager_id: Id,
+    requested_id: Option<Id>,
+    is_eligible_member: impl FnOnce(&Id) -> bool,
+) -> Result<Id, ReviewError> {
+    check_version(ticket.version, expected_version).map_err(|_| ReviewError::VersionConflict)?;
+    if !is_pending_review(
+        ticket.status,
+        ticket.has_assignee,
+        ticket.has_reviewer,
+        ticket.has_review_timestamp,
+    ) {
+        return Err(ReviewError::NotPendingReview);
+    }
+
+    select_assignee(ticket.priority, manager_id, requested_id, is_eligible_member)
+        .map_err(ReviewError::Assignment)
+}
+
+#[cfg(test)]
+mod review_tests {
+    use super::*;
+
+    fn pending(priority: Priority) -> ReviewState {
+        ReviewState {
+            priority,
+            version: 3,
+            status: TicketStatus::Open,
+            has_assignee: false,
+            has_reviewer: false,
+            has_review_timestamp: false,
+        }
+    }
+
+    #[test]
+    fn review_uses_stored_priority() {
+        let critical = pending(Priority::P1);
+        assert_eq!(review_ticket(&critical, 3, 10, None, |_| false), Ok(10));
+        let high = pending(Priority::P2);
+        assert_eq!(review_ticket(&high, 3, 10, Some(20), |id| *id == 20), Ok(20));
+        assert_eq!(
+            review_ticket(&high, 3, 10, Some(20), |_| false),
+            Err(ReviewError::Assignment(AssignmentError::IneligibleMember))
+        );
+    }
+
+    #[test]
+    fn rejects_stale_and_already_reviewed_tickets() {
+        let mut ticket = pending(Priority::P1);
+        assert_eq!(
+            review_ticket(&ticket, 2, 10, None, |_| false),
+            Err(ReviewError::VersionConflict)
+        );
+        ticket.has_assignee = true;
+        ticket.has_reviewer = true;
+        ticket.has_review_timestamp = true;
+        assert_eq!(
+            review_ticket(&ticket, 3, 10, None, |_| false),
+            Err(ReviewError::NotPendingReview)
+        );
+    }
+}
