@@ -1,3 +1,5 @@
+use super::{dto::CreateCategory, repository};
+use axum::extract::{Path, rejection::PathRejection};
 use axum::{
     Json,
     extract::{State, rejection::JsonRejection},
@@ -6,8 +8,7 @@ use axum::{
 };
 use serde_json::json;
 use sqlx::PgPool;
-
-use super::{dto::CreateCategory, repository};
+use uuid::Uuid;
 
 fn error_response(status: StatusCode, code: &'static str, message: &'static str) -> Response {
     (
@@ -20,6 +21,40 @@ fn error_response(status: StatusCode, code: &'static str, message: &'static str)
         })),
     )
         .into_response()
+}
+
+pub async fn get_category(
+    State(pool): State<PgPool>,
+    path: Result<Path<Uuid>, PathRejection>,
+) -> Response {
+    let Path(id) = match path {
+        Ok(path) => path,
+        Err(_) => {
+            return error_response(
+                StatusCode::BAD_REQUEST,
+                "invalid_id",
+                "Category ID must be a valid UUID.",
+            );
+        }
+    };
+
+    match repository::find_category(&pool, id).await {
+        Ok(Some(category)) => Json(category).into_response(),
+        Ok(None) => error_response(
+            StatusCode::NOT_FOUND,
+            "category_not_found",
+            "Category was not found.",
+        ),
+        Err(_) => {
+            tracing::error!("Category lookup failed");
+
+            error_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "internal_error",
+                "Could not retrieve the category.",
+            )
+        }
+    }
 }
 
 pub async fn create_category(
