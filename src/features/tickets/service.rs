@@ -42,6 +42,31 @@ pub fn submit_resolution<'a, Id: Eq>(
     })
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum ConfirmResolutionError {
+    NotRequester,
+    VersionConflict,
+    InvalidStatus,
+}
+
+/// The requester ID comes from the stored ticket and the actor ID from the actor context.
+pub fn confirm_resolution<Id: Eq>(
+    ticket: &ReviewState,
+    expected_version: i64,
+    requester: &Id,
+    actor: &Id,
+) -> Result<TicketStatus, ConfirmResolutionError> {
+    if actor != requester {
+        return Err(ConfirmResolutionError::NotRequester);
+    }
+    check_version(ticket.version, expected_version)
+        .map_err(|_| ConfirmResolutionError::VersionConflict)?;
+    if !ticket.status.can_transition_to(TicketStatus::Resolved) {
+        return Err(ConfirmResolutionError::InvalidStatus);
+    }
+    Ok(TicketStatus::Resolved)
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::model::Priority;
@@ -90,6 +115,39 @@ mod tests {
             assert_eq!(
                 submit(&ticket, 3, 20, "Fixed"),
                 Err(SubmitResolutionError::InvalidStatus)
+            );
+        }
+    }
+
+    #[test]
+    fn only_requester_can_confirm_a_pending_resolution_at_the_current_version() {
+        let mut ticket = ReviewState {
+            priority: Priority::P1,
+            version: 4,
+            status: TicketStatus::AwaitingEmployeeConfirmation,
+            has_assignee: true,
+            has_reviewer: true,
+            has_review_timestamp: true,
+        };
+        assert_eq!(
+            confirm_resolution(&ticket, 4, &10, &20),
+            Err(ConfirmResolutionError::NotRequester)
+        );
+        assert_eq!(
+            confirm_resolution(&ticket, 3, &10, &10),
+            Err(ConfirmResolutionError::VersionConflict)
+        );
+        ticket.status = confirm_resolution(&ticket, 4, &10, &10).unwrap();
+        assert_eq!(ticket.status, TicketStatus::Resolved);
+        for status in [
+            TicketStatus::Resolved,
+            TicketStatus::Open,
+            TicketStatus::InProgress,
+        ] {
+            ticket.status = status;
+            assert_eq!(
+                confirm_resolution(&ticket, 4, &10, &10),
+                Err(ConfirmResolutionError::InvalidStatus)
             );
         }
     }
