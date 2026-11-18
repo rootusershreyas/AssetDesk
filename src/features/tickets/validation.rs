@@ -18,7 +18,7 @@ pub fn validate_ticket_text(
         return Err(ValidationError::InvalidSubject);
     }
 
-    if !(1..=8_000).contains(&description_length) {
+    if !(1..=1_000).contains(&description_length) {
         return Err(ValidationError::InvalidDescription);
     }
 
@@ -53,8 +53,9 @@ mod tests {
     #[test]
     fn accepts_valid_text_and_upper_bounds() {
         assert_eq!(validate_ticket_text("VPN issue", "Cannot connect"), Ok(()));
+        assert_eq!(validate_ticket_text("VPN", "x"), Ok(()));
         assert_eq!(
-            validate_ticket_text(&"é".repeat(160), &"x".repeat(8_000)),
+            validate_ticket_text(&"é".repeat(160), &"é".repeat(1_000)),
             Ok(())
         );
     }
@@ -78,7 +79,7 @@ mod tests {
             Err(ValidationError::InvalidSubject)
         );
         assert_eq!(
-            validate_ticket_text("Subject", &"x".repeat(8_001)),
+            validate_ticket_text("Subject", &"x".repeat(1_001)),
             Err(ValidationError::InvalidDescription)
         );
     }
