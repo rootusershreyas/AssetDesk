@@ -52,3 +52,39 @@ mod tests {
         }
     }
 }
+
+pub fn is_pending_review(
+    status: TicketStatus,
+    has_assignee: bool,
+    has_reviewer: bool,
+    has_review_timestamp: bool,
+) -> bool {
+    status == TicketStatus::Open
+        && !has_assignee
+        && !has_reviewer
+        && !has_review_timestamp
+}
+
+#[cfg(test)]
+mod pending_review_tests {
+    use super::*;
+
+    #[test]
+    fn pending_review_requires_open_and_cleared_assignment_and_review() {
+        use TicketStatus::*;
+        for status in [Open, InProgress, Resolved, Closed] {
+            for has_assignee in [false, true] {
+                for has_reviewer in [false, true] {
+                    for has_review_timestamp in [false, true] {
+                        let expected = (status, has_assignee, has_reviewer, has_review_timestamp)
+                            == (Open, false, false, false);
+                        assert_eq!(
+                            is_pending_review(status, has_assignee, has_reviewer, has_review_timestamp),
+                            expected
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
