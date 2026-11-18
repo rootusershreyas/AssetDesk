@@ -255,3 +255,60 @@ mod review_tests {
         );
     }
 }
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum StartWorkError {
+    VersionConflict,
+    InvalidStatus,
+    IncompleteReview,
+    NotAssignedHandler,
+}
+
+pub fn start_work<Id: Eq>(
+    ticket: &ReviewState,
+    expected_version: i64,
+    assignee: Option<&Id>,
+    actor: &Id,
+) -> Result<TicketStatus, StartWorkError> {
+    check_version(ticket.version, expected_version).map_err(|_| StartWorkError::VersionConflict)?;
+    if !ticket.status.can_transition_to(TicketStatus::InProgress) {
+        return Err(StartWorkError::InvalidStatus);
+    }
+    if !(ticket.has_reviewer && ticket.has_review_timestamp && ticket.has_assignee) {
+        return Err(StartWorkError::IncompleteReview);
+    }
+    let handler = assignee.ok_or(StartWorkError::IncompleteReview)?;
+    if handler != actor {
+        return Err(StartWorkError::NotAssignedHandler);
+    }
+    Ok(TicketStatus::InProgress)
+}
+
+#[cfg(test)]
+mod start_work_tests {
+    use super::*;
+
+    #[test]
+    fn only_assigned_handler_can_start_reviewed_work() {
+        let mut ticket = ReviewState {
+            priority: Priority::P2,
+            version: 2,
+            status: TicketStatus::Open,
+            has_assignee: true,
+            has_reviewer: true,
+            has_review_timestamp: true,
+        };
+        let start = |ticket: &ReviewState, version, actor| {
+            start_work(ticket, version, Some(&20), &actor)
+        };
+        assert_eq!(start(&ticket, 2, 20), Ok(TicketStatus::InProgress));
+        assert_eq!(start(&ticket, 2, 30), Err(StartWorkError::NotAssignedHandler));
+        assert_eq!(start(&ticket, 1, 20), Err(StartWorkError::VersionConflict));
+        assert_eq!(start_work(&ticket, 2, None, &20), Err(StartWorkError::IncompleteReview));
+        ticket.has_review_timestamp = false;
+        assert_eq!(start(&ticket, 2, 20), Err(StartWorkError::IncompleteReview));
+        ticket.has_review_timestamp = true;
+        ticket.status = TicketStatus::InProgress;
+        assert_eq!(start(&ticket, 2, 20), Err(StartWorkError::InvalidStatus));
+    }
+}
