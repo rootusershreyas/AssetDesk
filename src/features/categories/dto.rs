@@ -23,6 +23,22 @@ impl CreateCategory {
             }
         }
 
+        let normalized_name = self
+            .name
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .to_lowercase();
+
+        if self.ticket_type == TicketType::Incident
+            && matches!(
+                normalized_name.as_str(),
+                "hardware" | "hardware issue" | "hardware request"
+            )
+        {
+            return Err("Hardware categories belong under Service Request.");
+        }
+
         Ok(self)
     }
 }
@@ -30,6 +46,49 @@ impl CreateCategory {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn rejects_hardware_categories_under_incident() {
+        for name in [
+            "Hardware",
+            "  HARDWARE  ",
+            "Hardware Issue",
+            "Hardware   Issue",
+            "Hardware Request",
+        ] {
+            let input = CreateCategory {
+                ticket_type: TicketType::Incident,
+                name: name.to_owned(),
+                description: None,
+            };
+
+            assert_eq!(
+                input.validate().unwrap_err(),
+                "Hardware categories belong under Service Request."
+            );
+        }
+    }
+
+    #[test]
+    fn accepts_hardware_request_under_service_request() {
+        let input = CreateCategory {
+            ticket_type: TicketType::ServiceRequest,
+            name: "Hardware Request".to_owned(),
+            description: None,
+        };
+
+        assert!(input.validate().is_ok());
+    }
+
+    #[test]
+    fn accepts_others_under_incident() {
+        let input = CreateCategory {
+            ticket_type: TicketType::Incident,
+            name: "Others".to_owned(),
+            description: Some("IT incidents outside the listed categories.".to_owned()),
+        };
+
+        assert!(input.validate().is_ok());
+    }
 
     #[test]
     fn trims_category_name() {
