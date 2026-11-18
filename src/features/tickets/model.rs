@@ -111,3 +111,67 @@ mod version_tests {
         assert_eq!(check_version(2, 3), Err(VersionConflict));
     }
 }
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum AssignmentError {
+    P1RequiresReviewingManager,
+    AssigneeRequired,
+    IneligibleMember,
+}
+
+pub fn select_assignee<Id: Eq>(
+    priority: Priority,
+    manager_id: Id,
+    requested_id: Option<Id>,
+    is_eligible_member: impl FnOnce(&Id) -> bool,
+) -> Result<Id, AssignmentError> {
+    match priority {
+        Priority::P1 => match requested_id {
+            Some(id) if id != manager_id => Err(AssignmentError::P1RequiresReviewingManager),
+            _ => Ok(manager_id),
+        },
+        Priority::P2 | Priority::P3 | Priority::P4 => {
+            let id = requested_id.ok_or(AssignmentError::AssigneeRequired)?;
+            if is_eligible_member(&id) {
+                Ok(id)
+            } else {
+                Err(AssignmentError::IneligibleMember)
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod assignment_tests {
+    use super::*;
+
+    #[test]
+    fn p1_goes_to_the_reviewing_manager_without_membership() {
+        for requested in [None, Some(10)] {
+            assert_eq!(
+                select_assignee(Priority::P1, 10, requested, |_| false),
+                Ok(10)
+            );
+        }
+        assert_eq!(
+            select_assignee(Priority::P1, 10, Some(20), |_| true),
+            Err(AssignmentError::P1RequiresReviewingManager)
+        );
+    }
+
+    #[test]
+    fn other_priorities_require_an_eligible_member() {
+        for priority in [Priority::P2, Priority::P3, Priority::P4] {
+            let eligible = |id: &u32| *id == 20;
+            assert_eq!(select_assignee(priority, 10, Some(20), eligible), Ok(20));
+            assert_eq!(
+                select_assignee(priority, 10, None, eligible),
+                Err(AssignmentError::AssigneeRequired)
+            );
+            assert_eq!(
+                select_assignee(priority, 10, Some(30), eligible),
+                Err(AssignmentError::IneligibleMember)
+            );
+        }
+    }
+}
