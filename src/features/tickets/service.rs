@@ -168,6 +168,21 @@ pub enum CreationError {
     Input(super::dto::CreateInputError),
 }
 
+pub fn initialize_ticket<Id>(
+    input: &super::dto::CreateTicketInput<Id>,
+    find_category: impl FnOnce(&Id) -> Option<CreationCategory>,
+) -> Result<ReviewState, CreationError> {
+    validate_creation(input, find_category)?;
+    Ok(ReviewState {
+        priority: input.priority,
+        version: 1,
+        status: TicketStatus::Open,
+        has_assignee: false,
+        has_reviewer: false,
+        has_review_timestamp: false,
+    })
+}
+
 pub fn validate_creation<Id>(
     input: &super::dto::CreateTicketInput<Id>,
     find_category: impl FnOnce(&Id) -> Option<CreationCategory>,
@@ -229,5 +244,39 @@ mod creation_tests {
             check(42, true, "incident", "Others"),
             Err(CreationError::Input(CreateInputError::MissingCustomConcern))
         );
+    }
+
+    #[test]
+    fn newly_created_tickets_are_pending_review_at_version_one() {
+        for priority in [Priority::P1, Priority::P2, Priority::P3, Priority::P4] {
+            let input = CreateTicketInput {
+                category_id: 7,
+                ticket_type: "service_request".into(),
+                priority,
+                subject: "Software".into(),
+                description: "Install the editor".into(),
+                custom_concern: None,
+            };
+            assert!(matches!(
+                initialize_ticket(&input, |_| None),
+                Err(CreationError::CategoryNotFound)
+            ));
+            let state = initialize_ticket(&input, |_| {
+                Some(CreationCategory {
+                    name: "Software".into(),
+                    ticket_type: "service_request".into(),
+                    is_active: true,
+                })
+            })
+            .unwrap();
+            assert_eq!(state.priority, priority);
+            assert_eq!(state.version, 1);
+            assert!(super::super::model::is_pending_review(
+                state.status,
+                state.has_assignee,
+                state.has_reviewer,
+                state.has_review_timestamp
+            ));
+        }
     }
 }
