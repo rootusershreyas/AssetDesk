@@ -1,6 +1,7 @@
 use super::{
     dto::{CreateCategory, ListCategoriesQuery, Page, UpdateCategory},
     repository,
+    service::{self, CategoryServiceError},
 };
 use axum::extract::{Path, rejection::PathRejection};
 use axum::extract::{Query, rejection::QueryRejection};
@@ -131,46 +132,25 @@ pub async fn update_category(
         }
     };
 
-    let input = match input.validate() {
-        Ok(input) => input,
-        Err(message) => {
-            return error_response(
-                StatusCode::UNPROCESSABLE_ENTITY,
-                "validation_error",
-                message,
-            );
-        }
-    };
-
-    match repository::update_category(&pool, id, &input).await {
+    match service::update_category(&pool, id, input).await {
         Ok(Some(category)) => Json(category).into_response(),
         Ok(None) => error_response(
             StatusCode::NOT_FOUND,
             "category_not_found",
             "Category was not found.",
         ),
-        Err(sqlx::Error::Database(error))
-            if error.is_unique_violation()
-                && error.constraint() == Some("categories_ticket_type_name_idx") =>
-        {
-            error_response(
-                StatusCode::CONFLICT,
-                "category_exists",
-                "A category with this name already exists for this ticket type.",
-            )
-        }
-        Err(sqlx::Error::Database(error))
-            if error.is_check_violation()
-                && error.constraint() == Some("categories_incident_excludes_hardware") =>
-        {
-            error_response(
-                StatusCode::UNPROCESSABLE_ENTITY,
-                "validation_error",
-                "Hardware categories belong under Service Request.",
-            )
-        }
-        Err(_) => {
-            tracing::error!(category_id = %id, "Category update failed");
+        Err(CategoryServiceError::Validation(message)) => error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "validation_error",
+            message,
+        ),
+        Err(CategoryServiceError::Conflict) => error_response(
+            StatusCode::CONFLICT,
+            "category_exists",
+            "A category with this name already exists for this ticket type.",
+        ),
+        Err(CategoryServiceError::Database(error)) => {
+            tracing::error!(category_id = %id, error = %error, "Category update failed");
 
             error_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
@@ -196,18 +176,7 @@ pub async fn create_category(
         }
     };
 
-    let input = match input.validate() {
-        Ok(input) => input,
-        Err(message) => {
-            return error_response(
-                StatusCode::UNPROCESSABLE_ENTITY,
-                "validation_error",
-                message,
-            );
-        }
-    };
-
-    match repository::insert_category(&pool, &input).await {
+    match service::create_category(&pool, input).await {
         Ok(category) => {
             let location = format!("/api/v1/categories/{}", category.id);
 
@@ -218,18 +187,18 @@ pub async fn create_category(
             )
                 .into_response()
         }
-        Err(sqlx::Error::Database(error))
-            if error.is_unique_violation()
-                && error.constraint() == Some("categories_ticket_type_name_idx") =>
-        {
-            error_response(
-                StatusCode::CONFLICT,
-                "category_exists",
-                "A category with this name already exists for this ticket type.",
-            )
-        }
-        Err(_) => {
-            tracing::error!("Category insertion failed");
+        Err(CategoryServiceError::Validation(message)) => error_response(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "validation_error",
+            message,
+        ),
+        Err(CategoryServiceError::Conflict) => error_response(
+            StatusCode::CONFLICT,
+            "category_exists",
+            "A category with this name already exists for this ticket type.",
+        ),
+        Err(CategoryServiceError::Database(error)) => {
+            tracing::error!(error = %error, "Category insertion failed");
 
             error_response(
                 StatusCode::INTERNAL_SERVER_ERROR,
