@@ -152,3 +152,82 @@ mod tests {
         }
     }
 }
+
+/// Category fields needed by ticket creation, supplied by the category lookup.
+pub struct CreationCategory {
+    pub name: String,
+    pub ticket_type: String,
+    pub is_active: bool,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum CreationError {
+    CategoryNotFound,
+    CategoryInactive,
+    CategoryTypeMismatch,
+    Input(super::dto::CreateInputError),
+}
+
+pub fn validate_creation<Id>(
+    input: &super::dto::CreateTicketInput<Id>,
+    find_category: impl FnOnce(&Id) -> Option<CreationCategory>,
+) -> Result<(), CreationError> {
+    let category = find_category(&input.category_id).ok_or(CreationError::CategoryNotFound)?;
+    if !category.is_active {
+        return Err(CreationError::CategoryInactive);
+    }
+    input
+        .validate(&category.name)
+        .map_err(CreationError::Input)?;
+    if category.ticket_type != input.ticket_type {
+        return Err(CreationError::CategoryTypeMismatch);
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod creation_tests {
+    use super::super::{
+        dto::{CreateInputError, CreateTicketInput},
+        model::Priority,
+    };
+    use super::*;
+
+    #[test]
+    fn creation_checks_the_category_selected_by_id() {
+        let input = CreateTicketInput {
+            category_id: 42,
+            ticket_type: "incident".into(),
+            priority: Priority::P3,
+            subject: "VPN".into(),
+            description: "Connection drops".into(),
+            custom_concern: None,
+        };
+        let check = |id, active, kind: &str, name: &str| {
+            validate_creation(&input, |requested| {
+                (*requested == id).then(|| CreationCategory {
+                    name: name.into(),
+                    ticket_type: kind.into(),
+                    is_active: active,
+                })
+            })
+        };
+        assert_eq!(check(42, true, "incident", "Network"), Ok(()));
+        assert_eq!(
+            check(41, true, "incident", "Network"),
+            Err(CreationError::CategoryNotFound)
+        );
+        assert_eq!(
+            check(42, false, "incident", "Network"),
+            Err(CreationError::CategoryInactive)
+        );
+        assert_eq!(
+            check(42, true, "service_request", "Network"),
+            Err(CreationError::CategoryTypeMismatch)
+        );
+        assert_eq!(
+            check(42, true, "incident", "Others"),
+            Err(CreationError::Input(CreateInputError::MissingCustomConcern))
+        );
+    }
+}
