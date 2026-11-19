@@ -1,14 +1,13 @@
-mod config;
-mod db;
-mod features;
-mod telemetry;
-
+use assetdesk::{
+    config, db,
+    features::categories::routes::{
+        create_category, get_category, list_categories, update_category,
+    },
+    telemetry,
+};
 use axum::routing::post;
 use axum::{Json, Router, body::Body, http::Request, routing::get};
 use axum::{extract::State, http::StatusCode};
-use features::categories::routes::{
-    create_category, get_category, list_categories, update_category,
-};
 use serde::Serialize;
 use sqlx::PgPool;
 use std::time::Duration;
