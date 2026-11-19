@@ -4,10 +4,11 @@ A planned Rust REST API for employee **Service Requests** and **Incidents**.
 IT Managers review and assign tickets; IT Team Members handle assigned work;
 the original requester confirms whether the resolution is accepted.
 
-**Status:** workflow/contracts are planned. B has locally initialized a Rust
-scaffold and reported a successful cargo check; the shared ticketing API,
-migrations and integration tests are not implemented. The final product name
-is undecided; the repository is currently named AssetDesk.
+**Status:** the shared Axum/PostgreSQL foundation and typed-category API are
+implemented on `feat/support-categories`. User accounts, category membership,
+tickets/events, PostgreSQL integration tests and OpenAPI remain in progress.
+The final product name is undecided; the repository is currently named
+AssetDesk.
 
 ## Workflow
 
@@ -64,6 +65,31 @@ The proposed three-day local prototype covers:
 
 Five business tables are planned: `users`, `categories`, `category_agents`,
 `tickets` and `ticket_events`.
+
+## Implemented category contract
+
+The category branch supplies the shared `TicketType` enum with
+`service_request` and `incident`, PostgreSQL migrations for typed categories,
+and these routes:
+
+| Method | Route | Behavior |
+| --- | --- | --- |
+| `POST` | `/api/v1/categories` | Create a typed category and return `201` plus `Location` |
+| `GET` | `/api/v1/categories` | List categories with optional `ticket_type`, `limit` and `offset` |
+| `GET` | `/api/v1/categories/{id}` | Retrieve a category by UUID |
+| `PATCH` | `/api/v1/categories/{id}` | Manager-only target: update its name, nullable description or active state |
+
+Category names are trimmed, limited to 80 characters and globally unique
+without case across both ticket types. Descriptions are limited to 1,000
+characters. Hardware categories belong under Service Request, and category type
+is immutable. Renaming is restricted to IT Managers once A's shared actor/auth
+contract is integrated. C should reuse `features::categories::model::TicketType`
+for tickets and reject missing, inactive or type-mismatched categories during
+ticket creation.
+
+The `category_agents` mapping waits for A's reviewed `users` migration. Its
+membership endpoints and P2-P4 eligibility checks are therefore not part of
+the current category PR.
 
 Subcategories, comments, reassignment/reprioritization, advanced queries,
 notifications, attachments, SLA automation and dashboards remain follow-up work.

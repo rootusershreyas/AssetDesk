@@ -1,7 +1,11 @@
-mod config;
-mod db;
-mod telemetry;
-
+use assetdesk::{
+    config, db,
+    features::categories::routes::{
+        create_category, get_category, list_categories, update_category,
+    },
+    telemetry,
+};
+use axum::routing::post;
 use axum::{Json, Router, body::Body, http::Request, routing::get};
 use axum::{extract::State, http::StatusCode};
 use serde::Serialize;
@@ -48,6 +52,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .await
         .map_err(|_| "Could not connect to PostgreSQL; check database configuration and health")?;
 
+    sqlx::migrate!("./migrations")
+        .run(&pool)
+        .await
+        .map_err(|_| "Could not apply PostgreSQL migrations")?;
+
     let database_name: String = sqlx::query_scalar("SELECT current_database()")
         .fetch_one(&pool)
         .await
@@ -61,6 +70,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app = Router::new()
         .route("/health", get(health))
         .route("/ready", get(ready))
+        .route(
+            "/api/v1/categories",
+            post(create_category).get(list_categories),
+        )
+        .route(
+            "/api/v1/categories/{id}",
+            get(get_category).patch(update_category),
+        )
         .with_state(pool)
         .layer(
             TraceLayer::new_for_http().make_span_with(|request: &Request<Body>| {
