@@ -23,8 +23,7 @@ pub async fn create_category(
         Ok(category) => Ok(category),
 
         Err(sqlx::Error::Database(error))
-            if error.is_unique_violation()
-                && error.constraint() == Some("categories_ticket_type_name_idx") =>
+            if error.is_unique_violation() && error.constraint() == Some("categories_name_idx") =>
         {
             Err(CategoryServiceError::Conflict)
         }
@@ -43,8 +42,7 @@ pub async fn update_category(
         Ok(category) => Ok(category),
 
         Err(sqlx::Error::Database(error))
-            if error.is_unique_violation()
-                && error.constraint() == Some("categories_ticket_type_name_idx") =>
+            if error.is_unique_violation() && error.constraint() == Some("categories_name_idx") =>
         {
             Err(CategoryServiceError::Conflict)
         }

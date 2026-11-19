@@ -147,7 +147,7 @@ pub async fn update_category(
         Err(CategoryServiceError::Conflict) => error_response(
             StatusCode::CONFLICT,
             "category_exists",
-            "A category with this name already exists for this ticket type.",
+            "A category with this name already exists.",
         ),
         Err(CategoryServiceError::Database(error)) => {
             tracing::error!(category_id = %id, error = %error, "Category update failed");
@@ -195,7 +195,7 @@ pub async fn create_category(
         Err(CategoryServiceError::Conflict) => error_response(
             StatusCode::CONFLICT,
             "category_exists",
-            "A category with this name already exists for this ticket type.",
+            "A category with this name already exists.",
         ),
         Err(CategoryServiceError::Database(error)) => {
             tracing::error!(error = %error, "Category insertion failed");

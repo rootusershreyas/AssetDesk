@@ -77,13 +77,15 @@ and these routes:
 | `POST` | `/api/v1/categories` | Create a typed category and return `201` plus `Location` |
 | `GET` | `/api/v1/categories` | List categories with optional `ticket_type`, `limit` and `offset` |
 | `GET` | `/api/v1/categories/{id}` | Retrieve a category by UUID |
-| `PATCH` | `/api/v1/categories/{id}` | Update its name, nullable description or active state |
+| `PATCH` | `/api/v1/categories/{id}` | Manager-only target: update its name, nullable description or active state |
 
-Category names are trimmed, limited to 80 characters and unique without case
-within each ticket type. Descriptions are limited to 1,000 characters. Hardware
-categories belong under Service Request, and category type is immutable. C
-should reuse `features::categories::model::TicketType` for tickets and reject
-missing, inactive or type-mismatched categories during ticket creation.
+Category names are trimmed, limited to 80 characters and globally unique
+without case across both ticket types. Descriptions are limited to 1,000
+characters. Hardware categories belong under Service Request, and category type
+is immutable. Renaming is restricted to IT Managers once A's shared actor/auth
+contract is integrated. C should reuse `features::categories::model::TicketType`
+for tickets and reject missing, inactive or type-mismatched categories during
+ticket creation.
 
 The `category_agents` mapping waits for A's reviewed `users` migration. Its
 membership endpoints and P2-P4 eligibility checks are therefore not part of
