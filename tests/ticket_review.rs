@@ -735,3 +735,40 @@ async fn incident_root_cause_is_required_saved_and_preserved_on_reopen(pool: PgP
     start_assigned_ticket(&pool, id, manager, 6).await.unwrap();
     assert_eq!(resolve_assigned_ticket(&pool, id, manager, 7, "Fulfilled request", None).await.unwrap(), 8);
 }
+
+#[sqlx::test(fixtures("ticket_creation", "ticket_review"))]
+#[ignore = "requires disposable PostgreSQL databases"]
+async fn requester_responses_preserve_resolution_history_after_reopening(pool: PgPool) {
+    use assetdesk::features::tickets::{
+        lifecycle::{start_assigned_ticket, resolve_assigned_ticket, reopen_ticket},
+        routes::{get_ticket_response, get_ticket_events_response},
+    };
+    use axum::{body::to_bytes, http::StatusCode};
+    use serde_json::Value;
+    let (id, _) = ticket(&pool, "p1").await;
+    let manager = user(&pool, "it_manager").await;
+    let owner: Uuid = sqlx::query_scalar("SELECT requester_id FROM tickets WHERE id=$1")
+        .bind(id).fetch_one(&pool).await.unwrap();
+    review_and_assign(&pool, id, manager, None, 1).await.unwrap();
+    start_assigned_ticket(&pool, id, manager, 2).await.unwrap();
+    resolve_assigned_ticket(&pool, id, manager, 3, "Updated client", Some("Old client")).await.unwrap();
+    let response = get_ticket_response(&pool, owner, id).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let detail: Value = serde_json::from_slice(&to_bytes(response.into_body(), 8192).await.unwrap()).unwrap();
+    assert_eq!(detail["resolution"], "Updated client");
+    assert_eq!(detail["root_cause"], "Old client");
+    reopen_ticket(&pool, id, owner, 4, "Still disconnecting").await.unwrap();
+    let response = get_ticket_response(&pool, owner, id).await;
+    let detail: Value = serde_json::from_slice(&to_bytes(response.into_body(), 8192).await.unwrap()).unwrap();
+    assert!(detail["resolution"].is_null());
+    assert!(detail["root_cause"].is_null());
+    let response = get_ticket_events_response(&pool, owner, id).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let history: Value = serde_json::from_slice(&to_bytes(response.into_body(), 8192).await.unwrap()).unwrap();
+    let events = history.as_array().unwrap();
+    let submitted = events.iter().find(|e| e["event_type"] == "resolution_submitted").unwrap();
+    assert_eq!(submitted["resolution"], "Updated client");
+    assert_eq!(submitted["root_cause"], "Old client");
+    assert_eq!(events.last().unwrap()["explanation"], "Still disconnecting");
+    assert_eq!(get_ticket_events_response(&pool, manager, id).await.status(), StatusCode::NOT_FOUND);
+}

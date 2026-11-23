@@ -24,3 +24,6 @@ CREATE TABLE ticket_events (
     resulting_version bigint NOT NULL,
     UNIQUE (ticket_id, resulting_version)
 );
+
+ALTER TABLE tickets ADD COLUMN resolution text, ADD COLUMN root_cause text;
+ALTER TABLE ticket_events ADD COLUMN resolution text, ADD COLUMN root_cause text, ADD COLUMN explanation text;

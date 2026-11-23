@@ -426,9 +426,9 @@ async fn history_response_returns_ordered_events_and_hides_other_tickets(pool: P
     assert_eq!(
         history,
         serde_json::json!([
-            {"actor_id":owner,"event_type":"created","resulting_version":1},
-            {"actor_id":other,"event_type":"reviewed_and_assigned","resulting_version":2},
-            {"actor_id":other,"event_type":"started","resulting_version":3}
+            {"actor_id":owner,"event_type":"created","resulting_version":1,"resolution":null,"root_cause":null,"explanation":null},
+            {"actor_id":other,"event_type":"reviewed_and_assigned","resulting_version":2,"resolution":null,"root_cause":null,"explanation":null},
+            {"actor_id":other,"event_type":"started","resulting_version":3,"resolution":null,"root_cause":null,"explanation":null}
         ])
     );
     let detail = get_ticket_response(&pool, owner, Uuid::nil()).await;

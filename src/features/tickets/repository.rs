@@ -71,6 +71,8 @@ pub async fn create_ticket(
 
 #[derive(Debug, sqlx::FromRow, serde::Serialize)]
 pub struct TicketDetails {
+    pub resolution: Option<String>,
+    pub root_cause: Option<String>,
     pub id: Uuid,
     pub ticket_number: String,
     pub requester_id: Uuid,
@@ -92,7 +94,7 @@ pub async fn find_ticket_for_requester(
 ) -> Result<Option<TicketDetails>, sqlx::Error> {
     sqlx::query_as(
         "SELECT id, ticket_number, requester_id, category_id, ticket_type, priority,
-                subject, description, custom_concern, status, version
+                subject, description, custom_concern, status, version, resolution, root_cause
          FROM tickets WHERE id = $1 AND requester_id = $2",
     )
     .bind(ticket_id)
@@ -158,7 +160,7 @@ pub async fn query_requester_tickets(
     }
     sqlx::query_as(
         "SELECT id, ticket_number, requester_id, category_id, ticket_type, priority,
-                subject, description, custom_concern, status, version
+                subject, description, custom_concern, status, version, resolution, root_cause
          FROM tickets WHERE requester_id = $1
            AND ($4::text IS NULL OR status = $4)
            AND ($5::text IS NULL OR priority = $5)
@@ -180,6 +182,9 @@ pub async fn query_requester_tickets(
 
 #[derive(Debug, sqlx::FromRow, serde::Serialize)]
 pub struct TicketEvent {
+    pub resolution: Option<String>,
+    pub root_cause: Option<String>,
+    pub explanation: Option<String>,
     pub actor_id: Uuid,
     pub event_type: String,
     pub resulting_version: i64,
@@ -192,7 +197,7 @@ pub async fn list_events_for_requester(
     requester_id: Uuid,
 ) -> Result<Vec<TicketEvent>, sqlx::Error> {
     sqlx::query_as(
-        "SELECT e.actor_id, e.event_type, e.resulting_version
+        "SELECT e.actor_id, e.event_type, e.resulting_version, e.resolution, e.root_cause, e.explanation
          FROM ticket_events e JOIN tickets t ON t.id = e.ticket_id
          WHERE t.id = $1 AND t.requester_id = $2
          ORDER BY e.resulting_version",
