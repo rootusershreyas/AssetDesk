@@ -14,6 +14,7 @@ CREATE TABLE tickets (
     custom_concern text,
     status text NOT NULL DEFAULT 'open',
     version bigint NOT NULL DEFAULT 1,
+    created_at timestamptz NOT NULL DEFAULT now(),
     FOREIGN KEY (category_id, ticket_type) REFERENCES categories (id, ticket_type)
 );
 CREATE TABLE ticket_events (

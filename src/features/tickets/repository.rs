@@ -106,3 +106,38 @@ pub async fn find_ticket_for_requester(
     .fetch_optional(pool)
     .await
 }
+
+#[derive(Debug)]
+pub enum ListTicketsError {
+    InvalidLimit,
+    InvalidOffset,
+    Database(sqlx::Error),
+}
+
+pub async fn list_tickets_for_requester(
+    pool: &PgPool,
+    requester_id: Uuid,
+    limit: Option<i64>,
+    offset: Option<i64>,
+) -> Result<Vec<TicketDetails>, ListTicketsError> {
+    let limit = limit.unwrap_or(20);
+    let offset = offset.unwrap_or(0);
+    if !(1..=100).contains(&limit) {
+        return Err(ListTicketsError::InvalidLimit);
+    }
+    if offset < 0 {
+        return Err(ListTicketsError::InvalidOffset);
+    }
+    sqlx::query_as(
+        "SELECT id, ticket_number, requester_id, category_id, ticket_type, priority,
+                subject, description, custom_concern, status, version
+         FROM tickets WHERE requester_id = $1
+         ORDER BY created_at DESC, id ASC LIMIT $2 OFFSET $3",
+    )
+    .bind(requester_id)
+    .bind(limit)
+    .bind(offset)
+    .fetch_all(pool)
+    .await
+    .map_err(ListTicketsError::Database)
+}

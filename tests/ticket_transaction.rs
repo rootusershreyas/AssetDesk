@@ -109,3 +109,48 @@ async fn requester_reads_only_their_own_selected_ticket(pool: PgPool) {
         );
     }
 }
+
+#[sqlx::test(fixtures("ticket_creation"))]
+#[ignore = "requires PostgreSQL with permission to create disposable databases"]
+async fn lists_requester_tickets_in_stable_pages(pool: PgPool) {
+    use assetdesk::features::tickets::repository::{ListTicketsError, list_tickets_for_requester};
+    let (owner, input) = sample(&pool).await;
+    let (other, _) = sample(&pool).await;
+    let older = create_ticket(&pool, owner, &input).await.unwrap();
+    let a = create_ticket(&pool, owner, &input).await.unwrap();
+    let b = create_ticket(&pool, owner, &input).await.unwrap();
+    create_ticket(&pool, other, &input).await.unwrap();
+    sqlx::query("UPDATE tickets SET created_at = CASE WHEN id = $1 THEN timestamptz '2000-01-01 UTC' ELSE timestamptz '2001-01-01 UTC' END WHERE requester_id = $2")
+        .bind(older).bind(owner).execute(&pool).await.unwrap();
+    let expected = [a.min(b), a.max(b), older];
+    for (offset, expected_page) in [
+        (0, &expected[..2]),
+        (2, &expected[2..]),
+        (3, &expected[3..]),
+    ] {
+        let rows = list_tickets_for_requester(&pool, owner, Some(2), Some(offset))
+            .await
+            .unwrap();
+        assert_eq!(
+            rows.iter().map(|row| row.id).collect::<Vec<_>>(),
+            expected_page
+        );
+    }
+    assert_eq!(
+        list_tickets_for_requester(&pool, other, None, None)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+    for limit in [0, 101] {
+        assert!(matches!(
+            list_tickets_for_requester(&pool, owner, Some(limit), None).await,
+            Err(ListTicketsError::InvalidLimit)
+        ));
+    }
+    assert!(matches!(
+        list_tickets_for_requester(&pool, owner, None, Some(-1)).await,
+        Err(ListTicketsError::InvalidOffset)
+    ));
+}
