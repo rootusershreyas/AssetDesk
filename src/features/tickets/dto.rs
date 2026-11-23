@@ -229,3 +229,26 @@ mod review_json_tests {
         }
     }
 }
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(tag = "status", rename_all = "snake_case", deny_unknown_fields)]
+pub enum TicketStatusInput {
+    InProgress { expected_version: i64 },
+}
+
+#[cfg(test)]
+mod status_input_tests {
+    use super::TicketStatusInput;
+    use serde_json::json;
+
+    #[test]
+    fn starting_work_requires_a_version_and_rejects_caller_identity() {
+        for body in [
+            json!({"status": "in_progress"}),
+            json!({"status": "in_progress", "expected_version": 1, "actor_id": "caller"}),
+            json!({"status": "in_progress", "expected_version": 1, "resolution": "done"}),
+        ] {
+            assert!(serde_json::from_value::<TicketStatusInput>(body).is_err());
+        }
+    }
+}

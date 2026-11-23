@@ -206,3 +206,69 @@ pub async fn review_ticket_response(
     };
     (status, Json(json!({"error": {"code": code, "message": message}}))).into_response()
 }
+
+/// The authenticated actor is supplied separately from the requested status.
+pub async fn ticket_status_response(
+    pool: &PgPool,
+    actor: Uuid,
+    ticket_id: Uuid,
+    input: super::dto::TicketStatusInput,
+) -> Response {
+    use super::{
+        dto::TicketStatusInput,
+        lifecycle::{PersistStartError, start_assigned_ticket},
+        model::StartWorkError,
+    };
+
+    let TicketStatusInput::InProgress { expected_version } = input;
+    let (status, code, message) = if expected_version < 1 {
+        (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "validation_error",
+            "Expected version must be positive.",
+        )
+    } else {
+        match start_assigned_ticket(pool, ticket_id, actor, expected_version).await {
+            Ok(version) => {
+                return Json(json!({"id": ticket_id, "status": "in_progress", "version": version}))
+                    .into_response();
+            }
+            Err(PersistStartError::TicketNotFound) => return ticket_not_found(),
+            Err(PersistStartError::Rule(StartWorkError::NotAssignedHandler)) => (
+                StatusCode::FORBIDDEN,
+                "not_assigned_handler",
+                "Only the assigned handler can start work.",
+            ),
+            Err(PersistStartError::Rule(StartWorkError::VersionConflict)) => (
+                StatusCode::CONFLICT,
+                "version_conflict",
+                "Ticket version has changed.",
+            ),
+            Err(PersistStartError::Rule(
+                StartWorkError::InvalidStatus | StartWorkError::IncompleteReview,
+            )) => (
+                StatusCode::CONFLICT,
+                "invalid_transition",
+                "Only a reviewed open ticket can be started.",
+            ),
+            Err(PersistStartError::IneligibleHandler) => (
+                StatusCode::CONFLICT,
+                "ineligible_handler",
+                "The assigned handler is no longer eligible.",
+            ),
+            Err(PersistStartError::Database(_)) => {
+                tracing::error!("Ticket start failed");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "internal_error",
+                    "Could not start ticket.",
+                )
+            }
+        }
+    };
+    (
+        status,
+        Json(json!({"error": {"code": code, "message": message}})),
+    )
+        .into_response()
+}

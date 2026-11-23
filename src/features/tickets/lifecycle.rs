@@ -24,9 +24,12 @@ pub async fn start_assigned_ticket(
     expected_version: i64,
 ) -> Result<i64, PersistStartError> {
     let mut tx = pool.begin().await?;
-    let ticket = lock_ticket(&mut tx, ticket_id)
+    let ticket = lock_ticket(&mut tx, ticket_id, Some(actor))
         .await?
         .ok_or(PersistStartError::TicketNotFound)?;
+    if ticket.assignee_id != Some(actor) {
+        return Err(PersistStartError::Rule(StartWorkError::NotAssignedHandler));
+    }
     let state = ticket.review_state();
     let next_status = start_work(
         &state,
@@ -80,12 +83,19 @@ impl LockedTicket {
 async fn lock_ticket(
     conn: &mut sqlx::PgConnection,
     id: Uuid,
+    visible_to: Option<Uuid>,
 ) -> Result<Option<LockedTicket>, sqlx::Error> {
     sqlx::query_as(
         "SELECT requester_id, priority, version, status, assignee_id, reviewed_by,
-        reviewed_at IS NOT NULL AS stamped, category_id FROM tickets WHERE id=$1 FOR UPDATE",
+        reviewed_at IS NOT NULL AS stamped, category_id FROM tickets t
+        WHERE t.id=$1 AND ($2::uuid IS NULL OR EXISTS (
+            SELECT 1 FROM users u WHERE u.id=$2 AND u.account_status='active'
+              AND (u.id=t.requester_id OR u.role='it_manager'
+                   OR (u.role='it_member' AND u.id=t.assignee_id))
+        )) FOR UPDATE OF t",
     )
     .bind(id)
+    .bind(visible_to)
     .fetch_optional(conn)
     .await
 }
@@ -127,7 +137,7 @@ pub async fn resolve_assigned_ticket(
     resolution: &str,
 ) -> Result<i64, PersistResolutionError> {
     let mut tx = pool.begin().await?;
-    let ticket = lock_ticket(&mut tx, ticket_id)
+    let ticket = lock_ticket(&mut tx, ticket_id, None)
         .await?
         .ok_or(PersistResolutionError::TicketNotFound)?;
     let submitted = super::service::submit_resolution(
@@ -173,7 +183,7 @@ pub async fn confirm_ticket_resolution(
     expected_version: i64,
 ) -> Result<i64, PersistConfirmationError> {
     let mut tx = pool.begin().await?;
-    let ticket = lock_ticket(&mut tx, ticket_id)
+    let ticket = lock_ticket(&mut tx, ticket_id, None)
         .await?
         .ok_or(PersistConfirmationError::TicketNotFound)?;
     let next = super::service::confirm_resolution(

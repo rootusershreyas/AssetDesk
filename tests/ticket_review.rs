@@ -502,3 +502,73 @@ async fn manager_review_response_reports_committed_version_and_conflicts(pool: P
         assert_eq!(body["error"]["code"], code);
     }
 }
+
+#[sqlx::test(fixtures("ticket_creation", "ticket_review"))]
+#[ignore = "requires disposable PostgreSQL databases"]
+async fn start_response_scopes_access_before_reporting_ticket_conflicts(pool: PgPool) {
+    use assetdesk::features::tickets::{dto::TicketStatusInput, routes::ticket_status_response};
+    use axum::{body::to_bytes, http::StatusCode};
+    use serde_json::{Value, json};
+
+    let (id, _) = ticket(&pool, "p1").await;
+    let handler = user(&pool, "it_manager").await;
+    let manager = user(&pool, "it_manager").await;
+    let outsider = user(&pool, "it_member").await;
+    let owner: Uuid = sqlx::query_scalar("SELECT requester_id FROM tickets WHERE id=$1")
+        .bind(id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    review_and_assign(&pool, id, handler, None, 1)
+        .await
+        .unwrap();
+
+    let call = |ticket_id, actor, version| {
+        let input = serde_json::from_value::<TicketStatusInput>(
+            json!({"status": "in_progress", "expected_version": version}),
+        )
+        .unwrap();
+        ticket_status_response(&pool, actor, ticket_id, input)
+    };
+    for (ticket_id, actor, version, status, code) in [
+        (id, outsider, 1, StatusCode::NOT_FOUND, "ticket_not_found"),
+        (
+            Uuid::nil(),
+            outsider,
+            1,
+            StatusCode::NOT_FOUND,
+            "ticket_not_found",
+        ),
+        (id, owner, 1, StatusCode::FORBIDDEN, "not_assigned_handler"),
+        (
+            id,
+            manager,
+            1,
+            StatusCode::FORBIDDEN,
+            "not_assigned_handler",
+        ),
+        (id, handler, 1, StatusCode::CONFLICT, "version_conflict"),
+        (
+            id,
+            handler,
+            0,
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "validation_error",
+        ),
+    ] {
+        let response = call(ticket_id, actor, version).await;
+        assert_eq!(response.status(), status);
+        let body: Value =
+            serde_json::from_slice(&to_bytes(response.into_body(), 4096).await.unwrap()).unwrap();
+        assert_eq!(body["error"]["code"], code);
+    }
+    let response = call(id, handler, 2).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), 4096).await.unwrap()).unwrap();
+    assert_eq!(
+        body,
+        json!({"id": id, "status": "in_progress", "version": 3})
+    );
+    assert_eq!(call(id, handler, 3).await.status(), StatusCode::CONFLICT);
+}
