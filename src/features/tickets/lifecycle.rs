@@ -56,6 +56,7 @@ pub async fn start_assigned_ticket(
 
 #[derive(sqlx::FromRow)]
 struct LockedTicket {
+    requester_id: Uuid,
     priority: Priority,
     version: i64,
     status: TicketStatus,
@@ -81,7 +82,7 @@ async fn lock_ticket(
     id: Uuid,
 ) -> Result<Option<LockedTicket>, sqlx::Error> {
     sqlx::query_as(
-        "SELECT priority, version, status, assignee_id, reviewed_by,
+        "SELECT requester_id, priority, version, status, assignee_id, reviewed_by,
         reviewed_at IS NOT NULL AS stamped, category_id FROM tickets WHERE id=$1 FOR UPDATE",
     )
     .bind(id)
@@ -146,6 +147,52 @@ pub async fn resolve_assigned_ticket(
     sqlx::query("INSERT INTO ticket_events(ticket_id, actor_id, event_type, resulting_version, old_status, new_status, resolution)
         VALUES($1,$2,'resolution_submitted',$3,$4,$5,$6)")
         .bind(ticket_id).bind(actor).bind(version).bind(ticket.status).bind(submitted.status).bind(submitted.resolution)
+        .execute(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(version)
+}
+
+#[derive(Debug)]
+pub enum PersistConfirmationError {
+    TicketNotFound,
+    Rule(super::service::ConfirmResolutionError),
+    Database(sqlx::Error),
+}
+
+impl From<sqlx::Error> for PersistConfirmationError {
+    fn from(error: sqlx::Error) -> Self {
+        Self::Database(error)
+    }
+}
+
+/// Confirm as the acting requester and return the committed ticket version.
+pub async fn confirm_ticket_resolution(
+    pool: &PgPool,
+    ticket_id: Uuid,
+    actor: Uuid,
+    expected_version: i64,
+) -> Result<i64, PersistConfirmationError> {
+    let mut tx = pool.begin().await?;
+    let ticket = lock_ticket(&mut tx, ticket_id)
+        .await?
+        .ok_or(PersistConfirmationError::TicketNotFound)?;
+    let next = super::service::confirm_resolution(
+        &ticket.review_state(),
+        expected_version,
+        &ticket.requester_id,
+        &actor,
+    )
+    .map_err(PersistConfirmationError::Rule)?;
+    let version = sqlx::query_scalar(
+        "UPDATE tickets SET status=$2, version=version+1 WHERE id=$1 RETURNING version",
+    )
+    .bind(ticket_id)
+    .bind(next)
+    .fetch_one(&mut *tx)
+    .await?;
+    sqlx::query("INSERT INTO ticket_events(ticket_id, actor_id, event_type, resulting_version, old_status, new_status)
+                 VALUES($1,$2,'resolution_confirmed',$3,$4,$5)")
+        .bind(ticket_id).bind(actor).bind(version).bind(ticket.status).bind(next)
         .execute(&mut *tx).await?;
     tx.commit().await?;
     Ok(version)

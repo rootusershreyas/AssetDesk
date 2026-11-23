@@ -274,3 +274,94 @@ async fn resolution_requires_current_handler_and_commits_with_event(pool: PgPool
         ))
     ));
 }
+
+#[sqlx::test(fixtures("ticket_creation", "ticket_review"))]
+#[ignore = "requires disposable PostgreSQL databases"]
+async fn requester_confirmation_commits_once_and_preserves_resolution(pool: PgPool) {
+    use assetdesk::features::tickets::{
+        lifecycle::{
+            PersistConfirmationError, confirm_ticket_resolution, resolve_assigned_ticket,
+            start_assigned_ticket,
+        },
+        service::ConfirmResolutionError,
+    };
+    let (id, _) = ticket(&pool, "p1").await;
+    let owner: Uuid = sqlx::query_scalar("SELECT requester_id FROM tickets WHERE id=$1")
+        .bind(id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let manager = user(&pool, "it_manager").await;
+    review_and_assign(&pool, id, manager, None, 1)
+        .await
+        .unwrap();
+    start_assigned_ticket(&pool, id, manager, 2).await.unwrap();
+    resolve_assigned_ticket(&pool, id, manager, 3, "Restored VPN")
+        .await
+        .unwrap();
+    let confirm = |actor, version| confirm_ticket_resolution(&pool, id, actor, version);
+    assert!(matches!(
+        confirm(manager, 4).await,
+        Err(PersistConfirmationError::Rule(
+            ConfirmResolutionError::NotRequester
+        ))
+    ));
+    assert!(matches!(
+        confirm(owner, 3).await,
+        Err(PersistConfirmationError::Rule(
+            ConfirmResolutionError::VersionConflict
+        ))
+    ));
+    sqlx::query("ALTER TABLE ticket_events ADD CONSTRAINT reject_confirm CHECK(event_type <> 'resolution_confirmed')")
+        .execute(&pool).await.unwrap();
+    assert!(
+        matches!(confirm(owner,4).await, Err(PersistConfirmationError::Database(sqlx::Error::Database(e))) if e.constraint()==Some("reject_confirm"))
+    );
+    let before: (String, i64) = sqlx::query_as("SELECT status,version FROM tickets WHERE id=$1")
+        .bind(id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(before, ("awaiting_employee_confirmation".into(), 4));
+    sqlx::query("ALTER TABLE ticket_events DROP CONSTRAINT reject_confirm")
+        .execute(&pool)
+        .await
+        .unwrap();
+    let results = tokio::join!(confirm(owner, 4), confirm(owner, 4));
+    assert!(matches!(
+        results,
+        (
+            Ok(5),
+            Err(PersistConfirmationError::Rule(
+                ConfirmResolutionError::VersionConflict
+            ))
+        ) | (
+            Err(PersistConfirmationError::Rule(
+                ConfirmResolutionError::VersionConflict
+            )),
+            Ok(5)
+        )
+    ));
+    assert!(matches!(
+        confirm(owner, 5).await,
+        Err(PersistConfirmationError::Rule(
+            ConfirmResolutionError::InvalidStatus
+        ))
+    ));
+    let rows: Vec<(String,i64,String,Uuid,String,String,i64)> = sqlx::query_as(
+        "SELECT t.status,t.version,t.resolution,e.actor_id,e.old_status,e.new_status,e.resulting_version
+         FROM tickets t JOIN ticket_events e ON t.id=e.ticket_id WHERE t.id=$1 AND e.event_type='resolution_confirmed'")
+        .bind(id).fetch_all(&pool).await.unwrap();
+    assert_eq!(
+        rows,
+        vec![(
+            "resolved".into(),
+            5,
+            "Restored VPN".into(),
+            owner,
+            "awaiting_employee_confirmation".into(),
+            "resolved".into(),
+            5
+        )]
+    );
+}
