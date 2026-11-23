@@ -121,9 +121,8 @@ Initial stories: T-X00 coordination and T-B01/02/03; T-B04 subcategories is late
 
 categories fields for the first milestone: id, ticket_type, name, description,
 is_active, created_at and updated_at. Trim names, require 1..80 characters,
-bound description at 1,000 and enforce case-insensitive uniqueness within each
-ticket_type. The same category name may exist separately for requests/incidents.
-Category ticket_type is immutable after creation.
+bound description at 1,000 and enforce global case-insensitive name uniqueness
+across both ticket types. Category ticket_type is immutable after creation.
 
 category_agents uses composite key(category_id, user_id), foreign keys and
 joined_at. Only active it_member accounts join this mapping. A reviewing P1
@@ -162,9 +161,9 @@ on A's users schema; removal guards depend on C's tickets schema. C owns matchin
 category.ticket_type to the ticket and checking activity during creation.
 
 First PR: finish the shared foundation with A/C review. Then typed category
-create/get/list, followed by PATCH and membership. Verify trimming/bounds,
-case-insensitive duplicates within type, same-name cross-type categories,
-invalid types, pagination, duplicate PUT, inactive/non-member-role rejection and
+create/get/list, followed by manager-only PATCH and membership. Verify
+trimming/bounds, global case-insensitive duplicate rejection, invalid types,
+pagination, duplicate PUT, inactive/non-member-role rejection and
 removal/configuration races against manager assignment.
 
 Subcategory follow-up: add one-level parent_id within categories, require the
