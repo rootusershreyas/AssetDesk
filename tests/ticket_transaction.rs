@@ -290,3 +290,42 @@ async fn list_query_returns_scoped_json_page(pool: PgPool) {
     assert_eq!(json["limit"], 1);
     assert_eq!(json["offset"], 0);
 }
+
+#[sqlx::test(fixtures("ticket_creation"))]
+#[ignore = "requires PostgreSQL with permission to create disposable databases"]
+async fn history_is_ordered_and_visible_only_to_requester(pool: PgPool) {
+    use assetdesk::features::tickets::repository::list_events_for_requester;
+    let (owner, input) = sample(&pool).await;
+    let (other, _) = sample(&pool).await;
+    let id = create_ticket(&pool, owner, &input).await.unwrap();
+    create_ticket(&pool, owner, &input).await.unwrap();
+    sqlx::query(
+        "INSERT INTO ticket_events (ticket_id, actor_id, event_type, resulting_version)
+        VALUES ($1, $2, 'started', 3), ($1, $2, 'reviewed_and_assigned', 2)",
+    )
+    .bind(id)
+    .bind(other)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let events = list_events_for_requester(&pool, id, owner).await.unwrap();
+    assert_eq!(
+        events
+            .iter()
+            .map(|e| (e.resulting_version, e.event_type.as_str(), e.actor_id))
+            .collect::<Vec<_>>(),
+        vec![
+            (1, "created", owner),
+            (2, "reviewed_and_assigned", other),
+            (3, "started", other)
+        ]
+    );
+    for (ticket, requester) in [(id, other), (Uuid::nil(), owner)] {
+        assert!(
+            list_events_for_requester(&pool, ticket, requester)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+}

@@ -177,3 +177,28 @@ pub async fn query_requester_tickets(
     .await
     .map_err(ListTicketsError::Database)
 }
+
+#[derive(Debug, sqlx::FromRow, serde::Serialize)]
+pub struct TicketEvent {
+    pub actor_id: Uuid,
+    pub event_type: String,
+    pub resulting_version: i64,
+}
+
+/// Missing tickets and tickets belonging to another requester both yield an empty history.
+pub async fn list_events_for_requester(
+    pool: &PgPool,
+    ticket_id: Uuid,
+    requester_id: Uuid,
+) -> Result<Vec<TicketEvent>, sqlx::Error> {
+    sqlx::query_as(
+        "SELECT e.actor_id, e.event_type, e.resulting_version
+         FROM ticket_events e JOIN tickets t ON t.id = e.ticket_id
+         WHERE t.id = $1 AND t.requester_id = $2
+         ORDER BY e.resulting_version",
+    )
+    .bind(ticket_id)
+    .bind(requester_id)
+    .fetch_all(pool)
+    .await
+}
