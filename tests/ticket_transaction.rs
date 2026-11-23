@@ -329,3 +329,47 @@ async fn history_is_ordered_and_visible_only_to_requester(pool: PgPool) {
         );
     }
 }
+
+#[sqlx::test(fixtures("ticket_creation"))]
+#[ignore = "requires disposable PostgreSQL databases"]
+async fn creation_response_identifies_committed_ticket_and_reports_validation_errors(pool: PgPool) {
+    use assetdesk::features::tickets::routes::create_ticket_response;
+    use axum::{
+        body::to_bytes,
+        http::{StatusCode, header},
+    };
+    let (actor, mut input) = sample(&pool).await;
+    let response = create_ticket_response(&pool, actor, &input).await;
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let location = response.headers()[header::LOCATION]
+        .to_str()
+        .unwrap()
+        .to_owned();
+    let body: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), 4096).await.unwrap()).unwrap();
+    let id = Uuid::parse_str(body["id"].as_str().unwrap()).unwrap();
+    assert_eq!(location, format!("/api/v1/tickets/{id}"));
+    assert!(
+        find_ticket_for_requester(&pool, id, actor)
+            .await
+            .unwrap()
+            .is_some()
+    );
+
+    input.custom_concern = None;
+    let response = create_ticket_response(&pool, actor, &input).await;
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let body: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), 4096).await.unwrap()).unwrap();
+    assert_eq!(body["error"]["code"], "validation_error");
+    input.category_id = Uuid::nil();
+    assert_eq!(
+        create_ticket_response(&pool, actor, &input).await.status(),
+        StatusCode::NOT_FOUND
+    );
+    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM tickets")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(count, 1);
+}
