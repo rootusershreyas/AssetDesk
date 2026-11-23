@@ -196,3 +196,36 @@ mod creation_json_tests {
         assert!(serde_json::from_value::<CreateTicketInput<Uuid>>(body).is_err());
     }
 }
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReviewTicketInput {
+    pub expected_version: i64,
+    pub assignee_id: Option<uuid::Uuid>,
+}
+
+#[cfg(test)]
+mod review_json_tests {
+    use super::ReviewTicketInput;
+    use serde_json::json;
+    use uuid::Uuid;
+
+    #[test]
+    fn review_accepts_only_version_and_optional_assignee() {
+        let member = Uuid::from_u128(42);
+        let parse = serde_json::from_value::<ReviewTicketInput>;
+        let p1 = parse(json!({"expected_version": 1})).unwrap();
+        assert_eq!((p1.expected_version, p1.assignee_id), (1, None));
+        let assigned = parse(json!({"expected_version": 3, "assignee_id": member})).unwrap();
+        assert_eq!((assigned.expected_version, assigned.assignee_id), (3, Some(member)));
+        for body in [
+            json!({}),
+            json!({"expected_version": "1"}),
+            json!({"expected_version": 1, "assignee_id": "bad-id"}),
+            json!({"expected_version": 1, "manager_id": member}),
+            json!({"expected_version": 1, "priority": "p4"}),
+        ] {
+            assert!(parse(body).is_err());
+        }
+    }
+}

@@ -1,6 +1,8 @@
 use super::{
-    dto::{CreateInputError, CreateTicketInput, ListTicketsQuery},
+    dto::{CreateInputError, CreateTicketInput, ListTicketsQuery, ReviewTicketInput},
+    model::{AssignmentError, ReviewError},
     repository::{CreateTicketError, ListTicketsError, create_ticket},
+    review::{PersistReviewError, review_and_assign},
     service::{CreationError, requester_ticket_page},
     validation::ValidationError,
 };
@@ -156,6 +158,51 @@ pub async fn list_tickets_response(
                 )
             }
         },
+    };
+    (status, Json(json!({"error": {"code": code, "message": message}}))).into_response()
+}
+
+/// Supply the acting manager's identity from the trusted actor context.
+pub async fn review_ticket_response(
+    pool: &PgPool,
+    actor: Uuid,
+    ticket_id: Uuid,
+    input: ReviewTicketInput,
+) -> Response {
+    use PersistReviewError::Review;
+    if input.expected_version < 1 {
+        return (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(json!({"error": {"code": "validation_error", "message": "Expected version must be positive."}})),
+        ).into_response();
+    }
+
+    let result = review_and_assign(pool, ticket_id, actor, input.assignee_id, input.expected_version).await;
+    let (status, code, message) = match result {
+        Ok(version) => return Json(json!({"id": ticket_id, "version": version})).into_response(),
+        Err(PersistReviewError::TicketNotFound) => return ticket_not_found(),
+        Err(PersistReviewError::ManagerRequired) => (
+            StatusCode::FORBIDDEN, "manager_required", "Only an active IT manager can review tickets.",
+        ),
+        Err(Review(ReviewError::VersionConflict)) => (
+            StatusCode::CONFLICT, "version_conflict", "Ticket version has changed.",
+        ),
+        Err(Review(ReviewError::NotPendingReview)) => (
+            StatusCode::CONFLICT, "not_pending_review", "Ticket is no longer pending review.",
+        ),
+        Err(Review(ReviewError::Assignment(AssignmentError::AssigneeRequired))) => (
+            StatusCode::UNPROCESSABLE_ENTITY, "validation_error", "Select a team member for this ticket.",
+        ),
+        Err(Review(ReviewError::Assignment(AssignmentError::P1RequiresReviewingManager))) => (
+            StatusCode::CONFLICT, "ineligible_assignee", "The reviewing manager must handle a P1 ticket.",
+        ),
+        Err(Review(ReviewError::Assignment(AssignmentError::IneligibleMember))) => (
+            StatusCode::CONFLICT, "ineligible_assignee", "Select an active team member for this category.",
+        ),
+        Err(PersistReviewError::Database(_)) => {
+            tracing::error!("Ticket review failed");
+            (StatusCode::INTERNAL_SERVER_ERROR, "internal_error", "Could not review ticket.")
+        }
     };
     (status, Json(json!({"error": {"code": code, "message": message}}))).into_response()
 }

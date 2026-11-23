@@ -466,3 +466,39 @@ async fn verify_complete_lifecycle(pool: PgPool, priority: Priority) {
         ]
     );
 }
+
+#[sqlx::test(fixtures("ticket_creation", "ticket_review"))]
+#[ignore = "requires disposable PostgreSQL databases"]
+async fn manager_review_response_reports_committed_version_and_conflicts(pool: PgPool) {
+    use assetdesk::features::tickets::{dto::ReviewTicketInput, routes::review_ticket_response};
+    use axum::{body::to_bytes, http::StatusCode};
+    use serde_json::{Value, json};
+
+    let (id, _) = ticket(&pool, "p1").await;
+    let manager = user(&pool, "it_manager").await;
+    let member = user(&pool, "it_member").await;
+    let review = |ticket_id, actor, expected_version, assignee_id| {
+        review_ticket_response(&pool, actor, ticket_id, ReviewTicketInput { expected_version, assignee_id })
+    };
+    for (ticket_id, actor, version, assignee, status, code) in [
+        (id, manager, 0, None, StatusCode::UNPROCESSABLE_ENTITY, "validation_error"),
+        (id, member, 1, None, StatusCode::FORBIDDEN, "manager_required"),
+        (Uuid::nil(), manager, 1, None, StatusCode::NOT_FOUND, "ticket_not_found"),
+        (id, manager, 1, Some(member), StatusCode::CONFLICT, "ineligible_assignee"),
+    ] {
+        let response = review(ticket_id, actor, version, assignee).await;
+        assert_eq!(response.status(), status);
+        let body: Value = serde_json::from_slice(&to_bytes(response.into_body(), 4096).await.unwrap()).unwrap();
+        assert_eq!(body["error"]["code"], code);
+    }
+    let response = review(id, manager, 1, None).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body: Value = serde_json::from_slice(&to_bytes(response.into_body(), 4096).await.unwrap()).unwrap();
+    assert_eq!(body, json!({"id": id, "version": 2}));
+    for (version, code) in [(1, "version_conflict"), (2, "not_pending_review")] {
+        let response = review(id, manager, version, None).await;
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+        let body: Value = serde_json::from_slice(&to_bytes(response.into_body(), 4096).await.unwrap()).unwrap();
+        assert_eq!(body["error"]["code"], code);
+    }
+}
