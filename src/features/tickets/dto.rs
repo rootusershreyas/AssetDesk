@@ -1,8 +1,9 @@
 use super::model::Priority;
 use super::validation::{ValidationError, validate_ticket_text};
+use crate::features::categories::model::TicketType;
 
 pub struct CreateTicketInput<Id> {
-    pub ticket_type: String,
+    pub ticket_type: TicketType,
     pub category_id: Id,
     pub priority: Priority,
     pub subject: String,
@@ -12,7 +13,6 @@ pub struct CreateTicketInput<Id> {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum CreateInputError {
-    InvalidTicketType,
     InvalidText(ValidationError),
     MissingCustomConcern,
 }
@@ -20,11 +20,7 @@ pub enum CreateInputError {
 impl<Id> CreateTicketInput<Id> {
     /// Supply the stored name of the category looked up by category_id.
     pub fn validate(&self, category_name: &str) -> Result<(), CreateInputError> {
-        let incident = match self.ticket_type.as_str() {
-            "incident" => true,
-            "service_request" => false,
-            _ => return Err(CreateInputError::InvalidTicketType),
-        };
+        let incident = self.ticket_type == TicketType::Incident;
         validate_ticket_text(&self.subject, &self.description)
             .map_err(CreateInputError::InvalidText)?;
         if incident
@@ -46,7 +42,7 @@ mod tests {
 
     fn incident() -> CreateTicketInput<u32> {
         CreateTicketInput {
-            ticket_type: "incident".into(),
+            ticket_type: TicketType::Incident,
             category_id: 1,
             priority: Priority::P2,
             subject: "Login".into(),
@@ -75,12 +71,8 @@ mod tests {
     fn ordinary_incidents_and_service_requests_can_omit_concern() {
         let mut input = incident();
         assert_eq!(input.validate("Login Issue"), Ok(()));
-        input.ticket_type = "service_request".into();
+        input.ticket_type = TicketType::ServiceRequest;
         assert_eq!(input.validate("Others"), Ok(()));
-        input.ticket_type = "unknown".into();
-        assert_eq!(
-            input.validate("Others"),
-            Err(CreateInputError::InvalidTicketType)
-        );
+        assert!(serde_json::from_str::<TicketType>(r#""unknown""#).is_err());
     }
 }

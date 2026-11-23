@@ -1,5 +1,6 @@
 use super::model::{ReviewState, TicketStatus, check_version};
 use super::validation::{ValidationError, validate_resolution};
+use crate::features::categories::model::TicketType;
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum SubmitResolutionError {
@@ -156,7 +157,7 @@ mod tests {
 /// Category fields needed by ticket creation, supplied by the category lookup.
 pub struct CreationCategory {
     pub name: String,
-    pub ticket_type: String,
+    pub ticket_type: TicketType,
     pub is_active: bool,
 }
 
@@ -212,36 +213,36 @@ mod creation_tests {
     fn creation_checks_the_category_selected_by_id() {
         let input = CreateTicketInput {
             category_id: 42,
-            ticket_type: "incident".into(),
+            ticket_type: TicketType::Incident,
             priority: Priority::P3,
             subject: "VPN".into(),
             description: "Connection drops".into(),
             custom_concern: None,
         };
-        let check = |id, active, kind: &str, name: &str| {
+        let check = |id, active, kind: TicketType, name: &str| {
             validate_creation(&input, |requested| {
                 (*requested == id).then(|| CreationCategory {
                     name: name.into(),
-                    ticket_type: kind.into(),
+                    ticket_type: kind,
                     is_active: active,
                 })
             })
         };
-        assert_eq!(check(42, true, "incident", "Network"), Ok(()));
+        assert_eq!(check(42, true, TicketType::Incident, "Network"), Ok(()));
         assert_eq!(
-            check(41, true, "incident", "Network"),
+            check(41, true, TicketType::Incident, "Network"),
             Err(CreationError::CategoryNotFound)
         );
         assert_eq!(
-            check(42, false, "incident", "Network"),
+            check(42, false, TicketType::Incident, "Network"),
             Err(CreationError::CategoryInactive)
         );
         assert_eq!(
-            check(42, true, "service_request", "Network"),
+            check(42, true, TicketType::ServiceRequest, "Network"),
             Err(CreationError::CategoryTypeMismatch)
         );
         assert_eq!(
-            check(42, true, "incident", "Others"),
+            check(42, true, TicketType::Incident, "Others"),
             Err(CreationError::Input(CreateInputError::MissingCustomConcern))
         );
     }
@@ -251,7 +252,7 @@ mod creation_tests {
         for priority in [Priority::P1, Priority::P2, Priority::P3, Priority::P4] {
             let input = CreateTicketInput {
                 category_id: 7,
-                ticket_type: "service_request".into(),
+                ticket_type: TicketType::ServiceRequest,
                 priority,
                 subject: "Software".into(),
                 description: "Install the editor".into(),
@@ -264,7 +265,7 @@ mod creation_tests {
             let state = initialize_ticket(&input, |_| {
                 Some(CreationCategory {
                     name: "Software".into(),
-                    ticket_type: "service_request".into(),
+                    ticket_type: TicketType::ServiceRequest,
                     is_active: true,
                 })
             })
