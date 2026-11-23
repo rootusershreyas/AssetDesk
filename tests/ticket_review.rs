@@ -187,3 +187,90 @@ async fn start_rechecks_membership_and_rolls_back_on_event_failure(pool: PgPool)
         3
     );
 }
+
+#[sqlx::test(fixtures("ticket_creation", "ticket_review"))]
+#[ignore = "requires disposable PostgreSQL databases"]
+async fn resolution_requires_current_handler_and_commits_with_event(pool: PgPool) {
+    use assetdesk::features::tickets::{
+        lifecycle::{PersistResolutionError, resolve_assigned_ticket, start_assigned_ticket},
+        service::SubmitResolutionError,
+    };
+    let (id, category) = ticket(&pool, "p2").await;
+    let manager = user(&pool, "it_manager").await;
+    let member = user(&pool, "it_member").await;
+    sqlx::query("INSERT INTO category_agents(category_id,user_id) VALUES ($1,$2)")
+        .bind(category)
+        .bind(member)
+        .execute(&pool)
+        .await
+        .unwrap();
+    review_and_assign(&pool, id, manager, Some(member), 1)
+        .await
+        .unwrap();
+    start_assigned_ticket(&pool, id, member, 2).await.unwrap();
+    let submit =
+        |actor, version| resolve_assigned_ticket(&pool, id, actor, version, "  Restored VPN  ");
+    assert!(matches!(
+        submit(manager, 3).await,
+        Err(PersistResolutionError::Rule(
+            SubmitResolutionError::NotAssignedHandler
+        ))
+    ));
+    assert!(matches!(
+        submit(member, 2).await,
+        Err(PersistResolutionError::Rule(
+            SubmitResolutionError::VersionConflict
+        ))
+    ));
+    sqlx::query("UPDATE users SET account_status='inactive' WHERE id=$1")
+        .bind(member)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert!(matches!(
+        submit(member, 3).await,
+        Err(PersistResolutionError::IneligibleHandler)
+    ));
+    sqlx::query("UPDATE users SET account_status='active' WHERE id=$1")
+        .bind(member)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query("ALTER TABLE ticket_events ADD CONSTRAINT reject_resolution CHECK(event_type <> 'resolution_submitted')")
+        .execute(&pool).await.unwrap();
+    assert!(
+        matches!(submit(member,3).await, Err(PersistResolutionError::Database(sqlx::Error::Database(e))) if e.constraint()==Some("reject_resolution"))
+    );
+    let before: (String, i64, Option<String>) =
+        sqlx::query_as("SELECT status,version,resolution FROM tickets WHERE id=$1")
+            .bind(id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(before, ("in_progress".into(), 3, None));
+    sqlx::query("ALTER TABLE ticket_events DROP CONSTRAINT reject_resolution")
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(submit(member, 3).await.unwrap(), 4);
+    let records: Vec<(String,String,String,Uuid)> = sqlx::query_as(
+        "SELECT t.status,t.resolution,e.resolution,e.actor_id FROM tickets t JOIN ticket_events e
+         ON t.id=e.ticket_id AND t.version=e.resulting_version WHERE t.id=$1 AND e.event_type='resolution_submitted'
+         AND e.old_status='in_progress' AND e.new_status=t.status")
+        .bind(id).fetch_all(&pool).await.unwrap();
+    assert_eq!(
+        records,
+        vec![(
+            "awaiting_employee_confirmation".into(),
+            "Restored VPN".into(),
+            "Restored VPN".into(),
+            member
+        )]
+    );
+    assert!(matches!(
+        submit(member, 4).await,
+        Err(PersistResolutionError::Rule(
+            SubmitResolutionError::InvalidStatus
+        ))
+    ));
+}
