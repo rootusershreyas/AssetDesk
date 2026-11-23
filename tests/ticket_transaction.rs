@@ -373,3 +373,31 @@ async fn creation_response_identifies_committed_ticket_and_reports_validation_er
         .unwrap();
     assert_eq!(count, 1);
 }
+
+#[sqlx::test(fixtures("ticket_creation"))]
+#[ignore = "requires disposable PostgreSQL databases"]
+async fn ticket_detail_response_is_scoped_to_requester(pool: PgPool) {
+    use assetdesk::features::tickets::routes::get_ticket_response;
+    use axum::{body::to_bytes, http::StatusCode};
+    let (owner, input) = sample(&pool).await;
+    let (other, _) = sample(&pool).await;
+    let id = create_ticket(&pool, owner, &input).await.unwrap();
+
+    let response = get_ticket_response(&pool, owner, id).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let details: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), 8192).await.unwrap()).unwrap();
+    assert_eq!(details["id"], id.to_string());
+    assert_eq!(details["requester_id"], owner.to_string());
+    assert_eq!(details["description"], input.description);
+    for (actor, ticket_id) in [(other, id), (owner, Uuid::nil())] {
+        let response = get_ticket_response(&pool, actor, ticket_id).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        let body: serde_json::Value =
+            serde_json::from_slice(&to_bytes(response.into_body(), 8192).await.unwrap()).unwrap();
+        assert_eq!(
+            body,
+            serde_json::json!({"error": {"code": "ticket_not_found", "message": "Ticket was not found."}})
+        );
+    }
+}
