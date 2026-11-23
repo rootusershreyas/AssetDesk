@@ -6,3 +6,4 @@ pub mod review;
 pub mod routes;
 pub mod service;
 pub mod validation;
+pub mod http;

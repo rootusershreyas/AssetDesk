@@ -68,6 +68,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let app = Router::new()
+        .merge(assetdesk::features::tickets::http::router())
         .route("/health", get(health))
         .route("/ready", get(ready))
         .route(
