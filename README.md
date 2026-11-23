@@ -4,10 +4,13 @@ A planned Rust REST API for employee **Service Requests** and **Incidents**.
 IT Managers review and assign tickets; IT Team Members handle assigned work;
 the original requester confirms whether the resolution is accepted.
 
-**Status:** workflow/contracts are planned. B has locally initialized a Rust
-scaffold and reported a successful cargo check; the shared ticketing API,
-migrations and integration tests are not implemented. The final product name
-is undecided; the repository is currently named AssetDesk.
+**Status:** the Rust/Axum scaffold includes user create/get/list routes backed
+by PostgreSQL. Login, sessions, authorization and user updates are not
+implemented yet. Add the shared authenticated actor/session contract before
+enabling manager-only user operations or exposing user data to a company
+network. The rest of the ticketing API and migrations are still in progress.
+The final product name is undecided; the repository is currently named
+AssetDesk.
 
 ## Workflow
 
