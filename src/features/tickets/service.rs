@@ -163,10 +163,28 @@ pub struct CreationCategory {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum CreationError {
+    CategoryLookupFailed,
     CategoryNotFound,
     CategoryInactive,
     CategoryTypeMismatch,
     Input(super::dto::CreateInputError),
+}
+
+/// Validate a proposed ticket against the current category record.
+pub async fn validate_creation_in_db(
+    pool: &sqlx::PgPool,
+    input: &super::dto::CreateTicketInput<uuid::Uuid>,
+) -> Result<(), CreationError> {
+    let category = crate::features::categories::repository::find_category(pool, input.category_id)
+        .await
+        .map_err(|_| CreationError::CategoryLookupFailed)?;
+    validate_creation(input, |_| {
+        category.map(|c| CreationCategory {
+            name: c.name,
+            ticket_type: c.ticket_type,
+            is_active: c.is_active,
+        })
+    })
 }
 
 pub fn initialize_ticket<Id>(
