@@ -1,3 +1,4 @@
+use assetdesk::features::tickets::model::Priority;
 use assetdesk::features::tickets::{
     model::ReviewError,
     review::{PersistReviewError, review_and_assign},
@@ -369,6 +370,16 @@ async fn requester_confirmation_commits_once_and_preserves_resolution(pool: PgPo
 #[sqlx::test(fixtures("ticket_creation", "ticket_review"))]
 #[ignore = "requires disposable PostgreSQL databases"]
 async fn complete_ticket_lifecycle_records_five_ordered_events(pool: PgPool) {
+    verify_complete_lifecycle(pool, Priority::P2).await;
+}
+
+#[sqlx::test(fixtures("ticket_creation", "ticket_review"))]
+#[ignore = "requires disposable PostgreSQL databases"]
+async fn p1_manager_handles_without_membership_and_requester_confirms(pool: PgPool) {
+    verify_complete_lifecycle(pool, Priority::P1).await;
+}
+
+async fn verify_complete_lifecycle(pool: PgPool, priority: Priority) {
     use assetdesk::features::{
         categories::model::TicketType,
         tickets::{
@@ -376,44 +387,57 @@ async fn complete_ticket_lifecycle_records_five_ordered_events(pool: PgPool) {
             lifecycle::{
                 confirm_ticket_resolution, resolve_assigned_ticket, start_assigned_ticket,
             },
-            model::Priority,
             repository::{create_ticket, find_ticket_for_requester, list_events_for_requester},
         },
     };
     let requester = user(&pool, "employee").await;
     let manager = user(&pool, "it_manager").await;
-    let member = user(&pool, "it_member").await;
     let category_id: Uuid = sqlx::query_scalar(
         "SELECT id FROM categories WHERE ticket_type='incident' AND name='Others'",
     )
     .fetch_one(&pool)
     .await
     .unwrap();
-    sqlx::query("INSERT INTO category_agents(category_id,user_id) VALUES($1,$2)")
-        .bind(category_id)
-        .bind(member)
-        .execute(&pool)
-        .await
-        .unwrap();
+    let requested = if priority == Priority::P1 {
+        None
+    } else {
+        let member = user(&pool, "it_member").await;
+        sqlx::query("INSERT INTO category_agents(category_id,user_id) VALUES($1,$2)")
+            .bind(category_id)
+            .bind(member)
+            .execute(&pool)
+            .await
+            .unwrap();
 
+        Some(member)
+    };
+    let handler = requested.unwrap_or(manager);
     let input = CreateTicketInput {
         category_id,
         ticket_type: TicketType::Incident,
-        priority: Priority::P2,
+        priority,
         subject: "VPN reconnect".into(),
         description: "The VPN disconnects after sleep.".into(),
         custom_concern: Some("Reconnecting requires a restart.".into()),
     };
     let id = create_ticket(&pool, requester, &input).await.unwrap();
-    let reviewed = review_and_assign(&pool, id, manager, Some(member), 1)
+    let reviewed = review_and_assign(&pool, id, manager, requested, 1)
         .await
         .unwrap();
-    let started = start_assigned_ticket(&pool, id, member, reviewed)
+    let started = start_assigned_ticket(&pool, id, handler, reviewed)
         .await
         .unwrap();
-    let awaiting = resolve_assigned_ticket(&pool, id, member, started, "Updated VPN client.")
+    let awaiting = resolve_assigned_ticket(&pool, id, handler, started, "Updated VPN client.")
         .await
         .unwrap();
+    assert!(matches!(
+        confirm_ticket_resolution(&pool, id, manager, awaiting).await,
+        Err(
+            assetdesk::features::tickets::lifecycle::PersistConfirmationError::Rule(
+                assetdesk::features::tickets::service::ConfirmResolutionError::NotRequester
+            )
+        )
+    ));
     let confirmed = confirm_ticket_resolution(&pool, id, requester, awaiting)
         .await
         .unwrap();
@@ -436,8 +460,8 @@ async fn complete_ticket_lifecycle_records_five_ordered_events(pool: PgPool) {
         vec![
             (1, "created", requester),
             (2, "reviewed_and_assigned", manager),
-            (3, "started", member),
-            (4, "resolution_submitted", member),
+            (3, "started", handler),
+            (4, "resolution_submitted", handler),
             (5, "resolution_confirmed", requester),
         ]
     );
