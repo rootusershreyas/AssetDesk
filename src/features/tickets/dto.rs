@@ -76,3 +76,50 @@ mod tests {
         assert!(serde_json::from_str::<TicketType>(r#""unknown""#).is_err());
     }
 }
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ListTicketsQuery {
+    pub status: Option<super::model::TicketStatus>,
+    pub priority: Option<Priority>,
+    pub ticket_type: Option<TicketType>,
+    pub category_id: Option<uuid::Uuid>,
+    #[serde(default = "default_ticket_limit")]
+    pub limit: i64,
+    #[serde(default)]
+    pub offset: i64,
+}
+
+pub(crate) fn default_ticket_limit() -> i64 {
+    20
+}
+
+#[cfg(test)]
+mod list_query_tests {
+    use super::*;
+    use axum::{extract::Query, http::Uri};
+
+    #[test]
+    fn accepts_typed_query_and_rejects_invalid_or_caller_selected_identity() {
+        let parse =
+            |url: &str| Query::<ListTicketsQuery>::try_from_uri(&url.parse::<Uri>().unwrap());
+        let q = parse("/?status=awaiting_employee_confirmation&priority=p3&ticket_type=incident&category_id=00000000-0000-0000-0000-000000000001").unwrap().0;
+        assert_eq!(
+            q.status,
+            Some(super::super::model::TicketStatus::AwaitingEmployeeConfirmation)
+        );
+        assert_eq!(q.priority, Some(Priority::P3));
+        assert_eq!(q.ticket_type, Some(TicketType::Incident));
+        assert_eq!(q.category_id, Some(uuid::Uuid::from_u128(1)));
+        assert_eq!((q.limit, q.offset), (20, 0));
+        for url in [
+            "/?requester_id=1",
+            "/?status=closed",
+            "/?priority=p5",
+            "/?category_id=bad",
+            "/?limit=many",
+        ] {
+            assert!(parse(url).is_err(), "{url}");
+        }
+    }
+}

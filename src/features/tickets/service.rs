@@ -299,3 +299,34 @@ mod creation_tests {
         }
     }
 }
+
+/// requester_id must come from the trusted actor context.
+pub async fn requester_ticket_page(
+    pool: &sqlx::PgPool,
+    requester_id: uuid::Uuid,
+    query: super::dto::ListTicketsQuery,
+) -> Result<
+    crate::features::categories::dto::Page<super::repository::TicketDetails>,
+    super::repository::ListTicketsError,
+> {
+    use super::repository::{TicketFilters, query_requester_tickets};
+    let filters = TicketFilters {
+        status: query.status,
+        priority: query.priority,
+        ticket_type: query.ticket_type,
+        category_id: query.category_id,
+    };
+    let items = query_requester_tickets(
+        pool,
+        requester_id,
+        filters,
+        Some(query.limit),
+        Some(query.offset),
+    )
+    .await?;
+    Ok(crate::features::categories::dto::Page {
+        items,
+        limit: query.limit,
+        offset: query.offset,
+    })
+}

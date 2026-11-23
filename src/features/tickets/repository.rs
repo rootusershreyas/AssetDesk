@@ -69,7 +69,7 @@ pub async fn create_ticket(
     Ok(id)
 }
 
-#[derive(Debug, sqlx::FromRow)]
+#[derive(Debug, sqlx::FromRow, serde::Serialize)]
 pub struct TicketDetails {
     pub id: Uuid,
     pub ticket_number: String,
@@ -148,7 +148,7 @@ pub async fn query_requester_tickets(
     limit: Option<i64>,
     offset: Option<i64>,
 ) -> Result<Vec<TicketDetails>, ListTicketsError> {
-    let limit = limit.unwrap_or(20);
+    let limit = limit.unwrap_or_else(super::dto::default_ticket_limit);
     let offset = offset.unwrap_or(0);
     if !(1..=100).contains(&limit) {
         return Err(ListTicketsError::InvalidLimit);

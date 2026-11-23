@@ -270,3 +270,23 @@ async fn requester_filters_by_type_and_category(pool: PgPool) {
         assert_eq!(ids, expected);
     }
 }
+
+#[sqlx::test(fixtures("ticket_creation"))]
+#[ignore = "requires PostgreSQL with permission to create disposable databases"]
+async fn list_query_returns_scoped_json_page(pool: PgPool) {
+    use assetdesk::features::tickets::{dto::ListTicketsQuery, service::requester_ticket_page};
+    use axum::extract::Query;
+    let (owner, input) = sample(&pool).await;
+    let (other, _) = sample(&pool).await;
+    let id = create_ticket(&pool, owner, &input).await.unwrap();
+    create_ticket(&pool, other, &input).await.unwrap();
+    let query = Query::<ListTicketsQuery>::try_from_uri(&"/?priority=p2&limit=1".parse().unwrap())
+        .unwrap()
+        .0;
+    let page = requester_ticket_page(&pool, owner, query).await.unwrap();
+    let json = serde_json::to_value(page).unwrap();
+    assert_eq!(json["items"].as_array().unwrap().len(), 1);
+    assert_eq!(json["items"][0]["id"], id.to_string());
+    assert_eq!(json["limit"], 1);
+    assert_eq!(json["offset"], 0);
+}
