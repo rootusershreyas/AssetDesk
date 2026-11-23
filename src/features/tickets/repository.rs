@@ -125,6 +125,29 @@ pub async fn list_filtered_tickets_for_requester(
     limit: Option<i64>,
     offset: Option<i64>,
 ) -> Result<Vec<TicketDetails>, ListTicketsError> {
+    let filters = TicketFilters {
+        status,
+        priority,
+        ..Default::default()
+    };
+    query_requester_tickets(pool, requester_id, filters, limit, offset).await
+}
+
+#[derive(Default)]
+pub struct TicketFilters {
+    pub status: Option<TicketStatus>,
+    pub priority: Option<Priority>,
+    pub ticket_type: Option<TicketType>,
+    pub category_id: Option<Uuid>,
+}
+
+pub async fn query_requester_tickets(
+    pool: &PgPool,
+    requester_id: Uuid,
+    filters: TicketFilters,
+    limit: Option<i64>,
+    offset: Option<i64>,
+) -> Result<Vec<TicketDetails>, ListTicketsError> {
     let limit = limit.unwrap_or(20);
     let offset = offset.unwrap_or(0);
     if !(1..=100).contains(&limit) {
@@ -139,13 +162,17 @@ pub async fn list_filtered_tickets_for_requester(
          FROM tickets WHERE requester_id = $1
            AND ($4::text IS NULL OR status = $4)
            AND ($5::text IS NULL OR priority = $5)
+           AND ($6::text IS NULL OR ticket_type = $6)
+           AND ($7::uuid IS NULL OR category_id = $7)
          ORDER BY created_at DESC, id ASC LIMIT $2 OFFSET $3",
     )
     .bind(requester_id)
     .bind(limit)
     .bind(offset)
-    .bind(status)
-    .bind(priority)
+    .bind(filters.status)
+    .bind(filters.priority)
+    .bind(filters.ticket_type)
+    .bind(filters.category_id)
     .fetch_all(pool)
     .await
     .map_err(ListTicketsError::Database)

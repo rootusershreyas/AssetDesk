@@ -201,3 +201,72 @@ async fn requester_filters_precede_pagination(pool: PgPool) {
         assert_eq!(ids, expected);
     }
 }
+
+#[sqlx::test(fixtures("ticket_creation"))]
+#[ignore = "requires PostgreSQL with permission to create disposable databases"]
+async fn requester_filters_by_type_and_category(pool: PgPool) {
+    use assetdesk::features::tickets::{
+        model::TicketStatus,
+        repository::{TicketFilters, query_requester_tickets},
+    };
+    let (owner, mut input) = sample(&pool).await;
+    let (other, _) = sample(&pool).await;
+    let incident = create_ticket(&pool, owner, &input).await.unwrap();
+    input.ticket_type = TicketType::ServiceRequest;
+    input.category_id = sqlx::query_scalar("INSERT INTO categories (ticket_type, name) VALUES ('service_request', 'Software') RETURNING id")
+        .fetch_one(&pool).await.unwrap();
+    let software = input.category_id;
+    let target = create_ticket(&pool, owner, &input).await.unwrap();
+    create_ticket(&pool, other, &input).await.unwrap();
+    input.category_id = sqlx::query_scalar("INSERT INTO categories (ticket_type, name) VALUES ('service_request', 'Access') RETURNING id")
+        .fetch_one(&pool).await.unwrap();
+    let access = create_ticket(&pool, owner, &input).await.unwrap();
+    for (filters, mut expected) in [
+        (
+            TicketFilters {
+                ticket_type: Some(TicketType::Incident),
+                ..Default::default()
+            },
+            vec![incident],
+        ),
+        (
+            TicketFilters {
+                ticket_type: Some(TicketType::ServiceRequest),
+                ..Default::default()
+            },
+            vec![target, access],
+        ),
+        (
+            TicketFilters {
+                category_id: Some(software),
+                ..Default::default()
+            },
+            vec![target],
+        ),
+        (
+            TicketFilters {
+                status: Some(TicketStatus::Open),
+                priority: Some(Priority::P2),
+                ticket_type: Some(TicketType::ServiceRequest),
+                category_id: Some(software),
+            },
+            vec![target],
+        ),
+        (
+            TicketFilters {
+                ticket_type: Some(TicketType::Incident),
+                category_id: Some(software),
+                ..Default::default()
+            },
+            vec![],
+        ),
+    ] {
+        let rows = query_requester_tickets(&pool, owner, filters, None, None)
+            .await
+            .unwrap();
+        let mut ids: Vec<_> = rows.into_iter().map(|r| r.id).collect();
+        ids.sort();
+        expected.sort();
+        assert_eq!(ids, expected);
+    }
+}
