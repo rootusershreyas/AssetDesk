@@ -59,6 +59,7 @@ pub async fn start_assigned_ticket(
 
 #[derive(sqlx::FromRow)]
 struct LockedTicket {
+    ticket_type: crate::features::categories::model::TicketType,
     requester_id: Uuid,
     priority: Priority,
     version: i64,
@@ -86,7 +87,7 @@ async fn lock_ticket(
     visible_to: Option<Uuid>,
 ) -> Result<Option<LockedTicket>, sqlx::Error> {
     sqlx::query_as(
-        "SELECT requester_id, priority, version, status, assignee_id, reviewed_by,
+        "SELECT ticket_type, requester_id, priority, version, status, assignee_id, reviewed_by,
         reviewed_at IS NOT NULL AS stamped, category_id FROM tickets t
         WHERE t.id=$1 AND ($2::uuid IS NULL OR EXISTS (
             SELECT 1 FROM users u WHERE u.id=$2 AND u.account_status='active'
@@ -135,6 +136,7 @@ pub async fn resolve_assigned_ticket(
     actor: Uuid,
     expected_version: i64,
     resolution: &str,
+    root_cause: Option<&str>,
 ) -> Result<i64, PersistResolutionError> {
     let mut tx = pool.begin().await?;
     let ticket = lock_ticket(&mut tx, ticket_id, Some(actor))
@@ -142,6 +144,11 @@ pub async fn resolve_assigned_ticket(
         .ok_or(PersistResolutionError::TicketNotFound)?;
     if ticket.assignee_id != Some(actor) {
         return Err(PersistResolutionError::Rule(super::service::SubmitResolutionError::NotAssignedHandler));
+    }
+    let root_cause = root_cause.map(str::trim);
+    if ticket.ticket_type == crate::features::categories::model::TicketType::Incident || root_cause.is_some() {
+        super::validation::validate_root_cause(root_cause.unwrap_or(""))
+            .map_err(|error| PersistResolutionError::Rule(super::service::SubmitResolutionError::InvalidText(error)))?;
     }
     let submitted = super::service::submit_resolution(
         &ticket.review_state(),
@@ -155,11 +162,11 @@ pub async fn resolve_assigned_ticket(
         return Err(PersistResolutionError::IneligibleHandler);
     }
     let version = sqlx::query_scalar(
-        "UPDATE tickets SET resolution=$2, status=$3, version=version+1 WHERE id=$1 RETURNING version")
-        .bind(ticket_id).bind(submitted.resolution).bind(submitted.status).fetch_one(&mut *tx).await?;
-    sqlx::query("INSERT INTO ticket_events(ticket_id, actor_id, event_type, resulting_version, old_status, new_status, resolution)
-        VALUES($1,$2,'resolution_submitted',$3,$4,$5,$6)")
-        .bind(ticket_id).bind(actor).bind(version).bind(ticket.status).bind(submitted.status).bind(submitted.resolution)
+        "UPDATE tickets SET resolution=$2, status=$3, root_cause=$4, version=version+1 WHERE id=$1 RETURNING version")
+        .bind(ticket_id).bind(submitted.resolution).bind(submitted.status).bind(root_cause).fetch_one(&mut *tx).await?;
+    sqlx::query("INSERT INTO ticket_events(ticket_id, actor_id, event_type, resulting_version, old_status, new_status, resolution, root_cause)
+        VALUES($1,$2,'resolution_submitted',$3,$4,$5,$6,$7)")
+        .bind(ticket_id).bind(actor).bind(version).bind(ticket.status).bind(submitted.status).bind(submitted.resolution).bind(root_cause)
         .execute(&mut *tx).await?;
     tx.commit().await?;
     Ok(version)
@@ -252,7 +259,7 @@ pub async fn reopen_ticket(
         .map_err(|_| PersistReopenError::InvalidExplanation)?;
     let version = sqlx::query_scalar(
         "UPDATE tickets SET status='open', assignee_id=NULL, reviewed_by=NULL,
-         reviewed_at=NULL, resolution=NULL, version=version+1 WHERE id=$1 RETURNING version",
+         reviewed_at=NULL, resolution=NULL, root_cause=NULL, version=version+1 WHERE id=$1 RETURNING version",
     ).bind(ticket_id).fetch_one(&mut *tx).await?;
     sqlx::query(
         "INSERT INTO ticket_events(ticket_id,actor_id,event_type,resulting_version,old_status,new_status,explanation)

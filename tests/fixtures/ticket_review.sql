@@ -18,3 +18,5 @@ ALTER TABLE tickets ADD COLUMN resolution text;
 ALTER TABLE ticket_events ADD COLUMN resolution text;
 
 ALTER TABLE ticket_events ADD COLUMN explanation text;
+ALTER TABLE tickets ADD COLUMN root_cause text;
+ALTER TABLE ticket_events ADD COLUMN root_cause text;

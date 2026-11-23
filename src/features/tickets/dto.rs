@@ -236,7 +236,7 @@ pub enum TicketStatusInput {
     Open { expected_version: i64, explanation: String },
     Resolved { expected_version: i64 },
     InProgress { expected_version: i64 },
-    AwaitingEmployeeConfirmation { expected_version: i64, resolution: String },
+    AwaitingEmployeeConfirmation { expected_version: i64, resolution: String, root_cause: Option<String> },
 }
 
 #[cfg(test)]

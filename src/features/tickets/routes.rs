@@ -228,8 +228,8 @@ pub async fn ticket_status_response(
             return confirm_resolution_response(pool, actor, ticket_id, expected_version).await;
         }
         TicketStatusInput::InProgress { expected_version } => expected_version,
-        TicketStatusInput::AwaitingEmployeeConfirmation { expected_version, resolution } => {
-            return submit_resolution_response(pool, actor, ticket_id, expected_version, &resolution).await;
+        TicketStatusInput::AwaitingEmployeeConfirmation { expected_version, resolution, root_cause } => {
+            return submit_resolution_response(pool, actor, ticket_id, expected_version, &resolution, root_cause.as_deref()).await;
         }
     };
     let (status, code, message) = if expected_version < 1 {
@@ -290,6 +290,7 @@ async fn submit_resolution_response(
     ticket_id: Uuid,
     expected_version: i64,
     resolution: &str,
+    root_cause: Option<&str>,
 ) -> Response {
     use super::{
         lifecycle::{PersistResolutionError, resolve_assigned_ticket},
@@ -298,7 +299,7 @@ async fn submit_resolution_response(
     let (status, code, message) = if expected_version < 1 {
         (StatusCode::UNPROCESSABLE_ENTITY, "validation_error", "Expected version must be positive.")
     } else {
-        match resolve_assigned_ticket(pool, ticket_id, actor, expected_version, resolution).await {
+        match resolve_assigned_ticket(pool, ticket_id, actor, expected_version, resolution, root_cause).await {
             Ok(version) => return Json(json!({
                 "id": ticket_id, "status": "awaiting_employee_confirmation", "version": version
             })).into_response(),
@@ -308,6 +309,9 @@ async fn submit_resolution_response(
             ),
             Err(PersistResolutionError::Rule(SubmitResolutionError::VersionConflict)) => (
                 StatusCode::CONFLICT, "version_conflict", "Ticket version has changed.",
+            ),
+            Err(PersistResolutionError::Rule(SubmitResolutionError::InvalidText(ValidationError::InvalidRootCause))) => (
+                StatusCode::UNPROCESSABLE_ENTITY, "validation_error", "Incident root cause is required and must contain 1 to 4000 characters.",
             ),
             Err(PersistResolutionError::Rule(SubmitResolutionError::InvalidText(_))) => (
                 StatusCode::UNPROCESSABLE_ENTITY, "validation_error", "Resolution must contain 1 to 8000 characters.",

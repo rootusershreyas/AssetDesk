@@ -210,7 +210,7 @@ async fn resolution_requires_current_handler_and_commits_with_event(pool: PgPool
         .unwrap();
     start_assigned_ticket(&pool, id, member, 2).await.unwrap();
     let submit =
-        |actor, version| resolve_assigned_ticket(&pool, id, actor, version, "  Restored VPN  ");
+        |actor, version| resolve_assigned_ticket(&pool, id, actor, version, "  Restored VPN  ", Some("Outdated VPN client"));
     assert!(matches!(
         submit(manager, 3).await,
         Err(PersistResolutionError::Rule(
@@ -297,7 +297,7 @@ async fn requester_confirmation_commits_once_and_preserves_resolution(pool: PgPo
         .await
         .unwrap();
     start_assigned_ticket(&pool, id, manager, 2).await.unwrap();
-    resolve_assigned_ticket(&pool, id, manager, 3, "Restored VPN")
+    resolve_assigned_ticket(&pool, id, manager, 3, "Restored VPN", Some("Outdated VPN client"))
         .await
         .unwrap();
     let confirm = |actor, version| confirm_ticket_resolution(&pool, id, actor, version);
@@ -427,7 +427,7 @@ async fn verify_complete_lifecycle(pool: PgPool, priority: Priority) {
     let started = start_assigned_ticket(&pool, id, handler, reviewed)
         .await
         .unwrap();
-    let awaiting = resolve_assigned_ticket(&pool, id, handler, started, "Updated VPN client.")
+    let awaiting = resolve_assigned_ticket(&pool, id, handler, started, "Updated VPN client.", Some("Outdated VPN client"))
         .await
         .unwrap();
     assert!(matches!(
@@ -594,7 +594,7 @@ async fn resolution_response_validates_access_text_and_committed_result(pool: Pg
         let input = serde_json::from_value::<TicketStatusInput>(serde_json::json!({
             "status": "awaiting_employee_confirmation",
             "expected_version": version,
-            "resolution": resolution
+            "resolution": resolution, "root_cause": "Outdated VPN client"
         })).unwrap();
         let response = ticket_status_response(&pool, actor, id, input).await;
         assert_eq!(response.status(), status);
@@ -627,7 +627,7 @@ async fn confirmation_response_requires_requester_and_current_version(pool: PgPo
         .bind(id).fetch_one(&pool).await.unwrap();
     review_and_assign(&pool, id, manager, None, 1).await.unwrap();
     start_assigned_ticket(&pool, id, manager, 2).await.unwrap();
-    resolve_assigned_ticket(&pool, id, manager, 3, "Updated client").await.unwrap();
+    resolve_assigned_ticket(&pool, id, manager, 3, "Updated client", Some("Outdated VPN client")).await.unwrap();
 
     for (actor, version, status) in [
         (outsider, 1, StatusCode::NOT_FOUND),
@@ -670,7 +670,7 @@ async fn reopening_returns_to_review_and_rolls_back_if_history_fails(pool: PgPoo
         .bind(id).fetch_one(&pool).await.unwrap();
     review_and_assign(&pool, id, manager, None, 1).await.unwrap();
     start_assigned_ticket(&pool, id, manager, 2).await.unwrap();
-    resolve_assigned_ticket(&pool, id, manager, 3, "Updated client").await.unwrap();
+    resolve_assigned_ticket(&pool, id, manager, 3, "Updated client", Some("Outdated VPN client")).await.unwrap();
     let call = |actor, version, reason: &str| {
         ticket_status_response(&pool, actor, id, TicketStatusInput::Open {
             expected_version: version, explanation: reason.to_owned(),
@@ -695,4 +695,43 @@ async fn reopening_returns_to_review_and_rolls_back_if_history_fails(pool: PgPoo
         .bind(id).fetch_one(&pool).await.unwrap();
     assert_eq!(reason, "Still broken");
     assert_eq!(review_and_assign(&pool, id, manager, None, 5).await.unwrap(), 6);
+}
+
+#[sqlx::test(fixtures("ticket_creation", "ticket_review"))]
+#[ignore = "requires disposable PostgreSQL databases"]
+async fn incident_root_cause_is_required_saved_and_preserved_on_reopen(pool: PgPool) {
+    use assetdesk::features::tickets::lifecycle::{
+        start_assigned_ticket, resolve_assigned_ticket, reopen_ticket,
+        PersistResolutionError,
+    };
+    use assetdesk::features::tickets::{service::SubmitResolutionError, validation::ValidationError};
+    let (id, _) = ticket(&pool, "p1").await;
+    let manager = user(&pool, "it_manager").await;
+    let owner: Uuid = sqlx::query_scalar("SELECT requester_id FROM tickets WHERE id=$1")
+        .bind(id).fetch_one(&pool).await.unwrap();
+    review_and_assign(&pool, id, manager, None, 1).await.unwrap();
+    start_assigned_ticket(&pool, id, manager, 2).await.unwrap();
+    for cause in [None, Some(" "), Some("x".repeat(4001).as_str())] {
+        assert!(matches!(
+            resolve_assigned_ticket(&pool, id, manager, 3, "Updated client", cause).await,
+            Err(PersistResolutionError::Rule(SubmitResolutionError::InvalidText(ValidationError::InvalidRootCause)))
+        ));
+    }
+    resolve_assigned_ticket(&pool, id, manager, 3, "Updated client", Some(" Old client ")).await.unwrap();
+    let cause: String = sqlx::query_scalar("SELECT root_cause FROM tickets WHERE id=$1")
+        .bind(id).fetch_one(&pool).await.unwrap();
+    assert_eq!(cause, "Old client");
+    reopen_ticket(&pool, id, owner, 4, "Still failing").await.unwrap();
+    let cause: Option<String> = sqlx::query_scalar("SELECT root_cause FROM tickets WHERE id=$1")
+        .bind(id).fetch_one(&pool).await.unwrap();
+    assert_eq!(cause, None);
+    let history: String = sqlx::query_scalar("SELECT root_cause FROM ticket_events WHERE ticket_id=$1 AND event_type='resolution_submitted'")
+        .bind(id).fetch_one(&pool).await.unwrap();
+    assert_eq!(history, "Old client");
+    sqlx::query("INSERT INTO categories(name,ticket_type) VALUES('Service test','service_request')").execute(&pool).await.unwrap();
+    sqlx::query("UPDATE tickets SET ticket_type='service_request', category_id=(SELECT id FROM categories WHERE ticket_type='service_request' LIMIT 1) WHERE id=$1")
+        .bind(id).execute(&pool).await.unwrap();
+    review_and_assign(&pool, id, manager, None, 5).await.unwrap();
+    start_assigned_ticket(&pool, id, manager, 6).await.unwrap();
+    assert_eq!(resolve_assigned_ticket(&pool, id, manager, 7, "Fulfilled request", None).await.unwrap(), 8);
 }
