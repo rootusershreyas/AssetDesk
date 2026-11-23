@@ -186,7 +186,7 @@ pub async fn confirm_ticket_resolution(
     expected_version: i64,
 ) -> Result<i64, PersistConfirmationError> {
     let mut tx = pool.begin().await?;
-    let ticket = lock_ticket(&mut tx, ticket_id, None)
+    let ticket = lock_ticket(&mut tx, ticket_id, Some(actor))
         .await?
         .ok_or(PersistConfirmationError::TicketNotFound)?;
     let next = super::service::confirm_resolution(

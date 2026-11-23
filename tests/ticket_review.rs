@@ -611,3 +611,47 @@ async fn resolution_response_validates_access_text_and_committed_result(pool: Pg
         .bind(id).fetch_one(&pool).await.unwrap();
     assert_eq!(saved, ("Updated client".into(), 4));
 }
+
+#[sqlx::test(fixtures("ticket_creation", "ticket_review"))]
+#[ignore = "requires disposable PostgreSQL databases"]
+async fn confirmation_response_requires_requester_and_current_version(pool: PgPool) {
+    use assetdesk::features::tickets::{
+        dto::TicketStatusInput, routes::ticket_status_response,
+        lifecycle::{start_assigned_ticket, resolve_assigned_ticket},
+    };
+    use axum::{body::to_bytes, http::StatusCode};
+    let (id, _) = ticket(&pool, "p1").await;
+    let manager = user(&pool, "it_manager").await;
+    let outsider = user(&pool, "employee").await;
+    let owner: Uuid = sqlx::query_scalar("SELECT requester_id FROM tickets WHERE id=$1")
+        .bind(id).fetch_one(&pool).await.unwrap();
+    review_and_assign(&pool, id, manager, None, 1).await.unwrap();
+    start_assigned_ticket(&pool, id, manager, 2).await.unwrap();
+    resolve_assigned_ticket(&pool, id, manager, 3, "Updated client").await.unwrap();
+
+    for (actor, version, status) in [
+        (outsider, 1, StatusCode::NOT_FOUND),
+        (manager, 4, StatusCode::FORBIDDEN),
+        (owner, 0, StatusCode::UNPROCESSABLE_ENTITY),
+        (owner, 3, StatusCode::CONFLICT),
+        (owner, 4, StatusCode::OK),
+        (owner, 4, StatusCode::CONFLICT),
+        (owner, 5, StatusCode::CONFLICT),
+    ] {
+        let input = serde_json::from_value::<TicketStatusInput>(serde_json::json!({
+            "status": "resolved", "expected_version": version
+        })).unwrap();
+        let response = ticket_status_response(&pool, actor, id, input).await;
+        assert_eq!(response.status(), status);
+        if status == StatusCode::OK {
+            let body: serde_json::Value = serde_json::from_slice(
+                &to_bytes(response.into_body(), 4096).await.unwrap()
+            ).unwrap();
+            assert_eq!(body, serde_json::json!({"id": id, "status": "resolved", "version": 5}));
+        }
+    }
+    let events: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM ticket_events WHERE ticket_id=$1 AND event_type='resolution_confirmed'"
+    ).bind(id).fetch_one(&pool).await.unwrap();
+    assert_eq!(events, 1);
+}

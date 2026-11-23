@@ -221,6 +221,9 @@ pub async fn ticket_status_response(
     };
 
     let expected_version = match input {
+        TicketStatusInput::Resolved { expected_version } => {
+            return confirm_resolution_response(pool, actor, ticket_id, expected_version).await;
+        }
         TicketStatusInput::InProgress { expected_version } => expected_version,
         TicketStatusInput::AwaitingEmployeeConfirmation { expected_version, resolution } => {
             return submit_resolution_response(pool, actor, ticket_id, expected_version, &resolution).await;
@@ -315,6 +318,42 @@ async fn submit_resolution_response(
             Err(PersistResolutionError::Database(_)) => {
                 tracing::error!("Resolution submission failed");
                 (StatusCode::INTERNAL_SERVER_ERROR, "internal_error", "Could not submit resolution.")
+            }
+        }
+    };
+    (status, Json(json!({"error": {"code": code, "message": message}}))).into_response()
+}
+
+async fn confirm_resolution_response(
+    pool: &PgPool,
+    actor: Uuid,
+    ticket_id: Uuid,
+    expected_version: i64,
+) -> Response {
+    use super::{
+        lifecycle::{PersistConfirmationError, confirm_ticket_resolution},
+        service::ConfirmResolutionError,
+    };
+    let (status, code, message) = if expected_version < 1 {
+        (StatusCode::UNPROCESSABLE_ENTITY, "validation_error", "Expected version must be positive.")
+    } else {
+        match confirm_ticket_resolution(pool, ticket_id, actor, expected_version).await {
+            Ok(version) => return Json(json!({
+                "id": ticket_id, "status": "resolved", "version": version
+            })).into_response(),
+            Err(PersistConfirmationError::TicketNotFound) => return ticket_not_found(),
+            Err(PersistConfirmationError::Rule(ConfirmResolutionError::NotRequester)) => (
+                StatusCode::FORBIDDEN, "not_requester", "Only the requester can confirm the resolution.",
+            ),
+            Err(PersistConfirmationError::Rule(ConfirmResolutionError::VersionConflict)) => (
+                StatusCode::CONFLICT, "version_conflict", "Ticket version has changed.",
+            ),
+            Err(PersistConfirmationError::Rule(ConfirmResolutionError::InvalidStatus)) => (
+                StatusCode::CONFLICT, "invalid_transition", "Ticket must be awaiting employee confirmation.",
+            ),
+            Err(PersistConfirmationError::Database(_)) => {
+                tracing::error!("Resolution confirmation failed");
+                (StatusCode::INTERNAL_SERVER_ERROR, "internal_error", "Could not confirm resolution.")
             }
         }
     };
