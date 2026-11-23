@@ -86,3 +86,104 @@ async fn member_eligibility_and_event_rollback(pool: PgPool) {
         .unwrap();
     assert_eq!(assigned, member);
 }
+
+#[sqlx::test(fixtures("ticket_creation", "ticket_review"))]
+#[ignore = "requires disposable PostgreSQL databases"]
+async fn concurrent_starts_record_one_transition(pool: PgPool) {
+    use assetdesk::features::tickets::{
+        lifecycle::{PersistStartError, start_assigned_ticket},
+        model::StartWorkError,
+    };
+    let (id, _) = ticket(&pool, "p1").await;
+    let manager = user(&pool, "it_manager").await;
+    let other = user(&pool, "it_manager").await;
+    review_and_assign(&pool, id, manager, None, 1)
+        .await
+        .unwrap();
+    assert!(matches!(
+        start_assigned_ticket(&pool, id, other, 2).await,
+        Err(PersistStartError::Rule(StartWorkError::NotAssignedHandler))
+    ));
+    let start = || start_assigned_ticket(&pool, id, manager, 2);
+    let (a, b) = tokio::join!(start(), start());
+    assert!(matches!(
+        (a, b),
+        (
+            Ok(3),
+            Err(PersistStartError::Rule(StartWorkError::VersionConflict))
+        ) | (
+            Err(PersistStartError::Rule(StartWorkError::VersionConflict)),
+            Ok(3)
+        )
+    ));
+    let rows = sqlx::query_as::<_,(String,i64,Uuid,String,String,i64)>(
+        "SELECT t.status,t.version,e.actor_id,e.old_status,e.new_status,e.resulting_version
+         FROM tickets t JOIN ticket_events e ON t.id=e.ticket_id WHERE t.id=$1 AND e.event_type='started'")
+        .bind(id).fetch_all(&pool).await.unwrap();
+    assert_eq!(
+        rows,
+        vec![(
+            "in_progress".into(),
+            3,
+            manager,
+            "open".into(),
+            "in_progress".into(),
+            3
+        )]
+    );
+}
+
+#[sqlx::test(fixtures("ticket_creation", "ticket_review"))]
+#[ignore = "requires disposable PostgreSQL databases"]
+async fn start_rechecks_membership_and_rolls_back_on_event_failure(pool: PgPool) {
+    use assetdesk::features::tickets::lifecycle::{PersistStartError, start_assigned_ticket};
+    let (id, category) = ticket(&pool, "p3").await;
+    let manager = user(&pool, "it_manager").await;
+    let member = user(&pool, "it_member").await;
+    let membership = "INSERT INTO category_agents(category_id,user_id) VALUES($1,$2)";
+    sqlx::query(membership)
+        .bind(category)
+        .bind(member)
+        .execute(&pool)
+        .await
+        .unwrap();
+    review_and_assign(&pool, id, manager, Some(member), 1)
+        .await
+        .unwrap();
+    sqlx::query("DELETE FROM category_agents WHERE category_id=$1 AND user_id=$2")
+        .bind(category)
+        .bind(member)
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert!(matches!(
+        start_assigned_ticket(&pool, id, member, 2).await,
+        Err(PersistStartError::IneligibleHandler)
+    ));
+    sqlx::query(membership)
+        .bind(category)
+        .bind(member)
+        .execute(&pool)
+        .await
+        .unwrap();
+    sqlx::query(
+        "ALTER TABLE ticket_events ADD CONSTRAINT reject_start CHECK(event_type <> 'started')",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    assert!(
+        matches!(start_assigned_ticket(&pool,id,member,2).await,Err(PersistStartError::Database(sqlx::Error::Database(e))) if e.constraint()==Some("reject_start"))
+    );
+    let state: (String,i64,i64) = sqlx::query_as("SELECT status,version,(SELECT count(*) FROM ticket_events WHERE ticket_id=$1 AND event_type='started') FROM tickets WHERE id=$1")
+        .bind(id).fetch_one(&pool).await.unwrap();
+    assert_eq!(state, ("open".into(), 2, 0));
+    sqlx::query("ALTER TABLE ticket_events DROP CONSTRAINT reject_start")
+        .execute(&pool)
+        .await
+        .unwrap();
+    assert_eq!(
+        start_assigned_ticket(&pool, id, member, 2).await.unwrap(),
+        3
+    );
+}

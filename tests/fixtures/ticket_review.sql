@@ -11,3 +11,5 @@ ALTER TABLE tickets ADD COLUMN assignee_id uuid REFERENCES users,
                     ADD COLUMN reviewed_at timestamptz;
 ALTER TABLE ticket_events ADD COLUMN new_assignee_id uuid REFERENCES users,
                           ADD COLUMN new_priority text;
+
+ALTER TABLE ticket_events ADD COLUMN old_status text, ADD COLUMN new_status text;
