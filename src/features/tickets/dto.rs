@@ -233,6 +233,7 @@ mod review_json_tests {
 #[derive(Debug, serde::Deserialize)]
 #[serde(tag = "status", rename_all = "snake_case", deny_unknown_fields)]
 pub enum TicketStatusInput {
+    Open { expected_version: i64, explanation: String },
     Resolved { expected_version: i64 },
     InProgress { expected_version: i64 },
     AwaitingEmployeeConfirmation { expected_version: i64, resolution: String },

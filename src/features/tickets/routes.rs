@@ -221,6 +221,9 @@ pub async fn ticket_status_response(
     };
 
     let expected_version = match input {
+        TicketStatusInput::Open { expected_version, explanation } => {
+            return reopen_response(pool, actor, ticket_id, expected_version, &explanation).await;
+        }
         TicketStatusInput::Resolved { expected_version } => {
             return confirm_resolution_response(pool, actor, ticket_id, expected_version).await;
         }
@@ -354,6 +357,41 @@ async fn confirm_resolution_response(
             Err(PersistConfirmationError::Database(_)) => {
                 tracing::error!("Resolution confirmation failed");
                 (StatusCode::INTERNAL_SERVER_ERROR, "internal_error", "Could not confirm resolution.")
+            }
+        }
+    };
+    (status, Json(json!({"error": {"code": code, "message": message}}))).into_response()
+}
+
+async fn reopen_response(
+    pool: &PgPool,
+    actor: Uuid,
+    ticket_id: Uuid,
+    expected_version: i64,
+    explanation: &str,
+) -> Response {
+    use super::lifecycle::{PersistReopenError, reopen_ticket};
+    let (status, code, message) = if expected_version < 1 {
+        (StatusCode::UNPROCESSABLE_ENTITY, "validation_error", "Expected version must be positive.")
+    } else {
+        match reopen_ticket(pool, ticket_id, actor, expected_version, explanation).await {
+            Ok(version) => return Json(json!({"id": ticket_id, "status": "open", "version": version})).into_response(),
+            Err(PersistReopenError::TicketNotFound) => return ticket_not_found(),
+            Err(PersistReopenError::NotRequester) => (
+                StatusCode::FORBIDDEN, "not_requester", "Only the requester can reopen the ticket.",
+            ),
+            Err(PersistReopenError::VersionConflict) => (
+                StatusCode::CONFLICT, "version_conflict", "Ticket version has changed.",
+            ),
+            Err(PersistReopenError::InvalidStatus) => (
+                StatusCode::CONFLICT, "invalid_transition", "Ticket must have a submitted resolution before reopening.",
+            ),
+            Err(PersistReopenError::InvalidExplanation) => (
+                StatusCode::UNPROCESSABLE_ENTITY, "validation_error", "Explanation must contain 1 to 4000 characters.",
+            ),
+            Err(PersistReopenError::Database(_)) => {
+                tracing::error!("Ticket reopening failed");
+                (StatusCode::INTERNAL_SERVER_ERROR, "internal_error", "Could not reopen ticket.")
             }
         }
     };

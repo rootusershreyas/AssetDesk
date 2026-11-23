@@ -210,3 +210,55 @@ pub async fn confirm_ticket_resolution(
     tx.commit().await?;
     Ok(version)
 }
+
+#[derive(Debug)]
+pub enum PersistReopenError {
+    TicketNotFound,
+    NotRequester,
+    VersionConflict,
+    InvalidStatus,
+    InvalidExplanation,
+    Database(sqlx::Error),
+}
+
+impl From<sqlx::Error> for PersistReopenError {
+    fn from(error: sqlx::Error) -> Self {
+        Self::Database(error)
+    }
+}
+
+/// Return the committed version after the requester sends the ticket for review.
+pub async fn reopen_ticket(
+    pool: &PgPool,
+    ticket_id: Uuid,
+    actor: Uuid,
+    expected_version: i64,
+    explanation: &str,
+) -> Result<i64, PersistReopenError> {
+    let mut tx = pool.begin().await?;
+    let ticket = lock_ticket(&mut tx, ticket_id, Some(actor))
+        .await?
+        .ok_or(PersistReopenError::TicketNotFound)?;
+    if ticket.requester_id != actor {
+        return Err(PersistReopenError::NotRequester);
+    }
+    if ticket.version != expected_version {
+        return Err(PersistReopenError::VersionConflict);
+    }
+    if !matches!(ticket.status, TicketStatus::AwaitingEmployeeConfirmation | TicketStatus::Resolved) {
+        return Err(PersistReopenError::InvalidStatus);
+    }
+    super::validation::validate_reopening_reason(explanation)
+        .map_err(|_| PersistReopenError::InvalidExplanation)?;
+    let version = sqlx::query_scalar(
+        "UPDATE tickets SET status='open', assignee_id=NULL, reviewed_by=NULL,
+         reviewed_at=NULL, resolution=NULL, version=version+1 WHERE id=$1 RETURNING version",
+    ).bind(ticket_id).fetch_one(&mut *tx).await?;
+    sqlx::query(
+        "INSERT INTO ticket_events(ticket_id,actor_id,event_type,resulting_version,old_status,new_status,explanation)
+         VALUES($1,$2,'reopened',$3,$4,'open',$5)",
+    ).bind(ticket_id).bind(actor).bind(version).bind(ticket.status).bind(explanation.trim())
+        .execute(&mut *tx).await?;
+    tx.commit().await?;
+    Ok(version)
+}

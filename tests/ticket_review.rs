@@ -655,3 +655,44 @@ async fn confirmation_response_requires_requester_and_current_version(pool: PgPo
     ).bind(id).fetch_one(&pool).await.unwrap();
     assert_eq!(events, 1);
 }
+
+#[sqlx::test(fixtures("ticket_creation", "ticket_review"))]
+#[ignore = "requires disposable PostgreSQL databases"]
+async fn reopening_returns_to_review_and_rolls_back_if_history_fails(pool: PgPool) {
+    use assetdesk::features::tickets::{
+        dto::TicketStatusInput, routes::ticket_status_response,
+        lifecycle::{start_assigned_ticket, resolve_assigned_ticket},
+    };
+    use axum::http::StatusCode;
+    let (id, _) = ticket(&pool, "p1").await;
+    let manager = user(&pool, "it_manager").await;
+    let owner: Uuid = sqlx::query_scalar("SELECT requester_id FROM tickets WHERE id=$1")
+        .bind(id).fetch_one(&pool).await.unwrap();
+    review_and_assign(&pool, id, manager, None, 1).await.unwrap();
+    start_assigned_ticket(&pool, id, manager, 2).await.unwrap();
+    resolve_assigned_ticket(&pool, id, manager, 3, "Updated client").await.unwrap();
+    let call = |actor, version, reason: &str| {
+        ticket_status_response(&pool, actor, id, TicketStatusInput::Open {
+            expected_version: version, explanation: reason.to_owned(),
+        })
+    };
+    assert_eq!(call(manager, 4, "Still broken").await.status(), StatusCode::FORBIDDEN);
+    assert_eq!(call(owner, 3, "Still broken").await.status(), StatusCode::CONFLICT);
+    assert_eq!(call(owner, 4, " ").await.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    sqlx::query("ALTER TABLE ticket_events ADD CONSTRAINT reject_reopen CHECK(event_type <> 'reopened')")
+        .execute(&pool).await.unwrap();
+    assert_eq!(call(owner, 4, "Still broken").await.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    let saved: (i64, String) = sqlx::query_as("SELECT version,resolution FROM tickets WHERE id=$1")
+        .bind(id).fetch_one(&pool).await.unwrap();
+    assert_eq!(saved, (4, "Updated client".into()));
+    sqlx::query("ALTER TABLE ticket_events DROP CONSTRAINT reject_reopen").execute(&pool).await.unwrap();
+    assert_eq!(call(owner, 4, " Still broken ").await.status(), StatusCode::OK);
+    let state: (String, i64, bool) = sqlx::query_as(
+        "SELECT status,version,assignee_id IS NULL AND reviewed_by IS NULL AND reviewed_at IS NULL AND resolution IS NULL FROM tickets WHERE id=$1"
+    ).bind(id).fetch_one(&pool).await.unwrap();
+    assert_eq!(state, ("open".into(), 5, true));
+    let reason: String = sqlx::query_scalar("SELECT explanation FROM ticket_events WHERE ticket_id=$1 AND event_type='reopened'")
+        .bind(id).fetch_one(&pool).await.unwrap();
+    assert_eq!(reason, "Still broken");
+    assert_eq!(review_and_assign(&pool, id, manager, None, 5).await.unwrap(), 6);
+}
