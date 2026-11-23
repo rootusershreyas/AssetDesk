@@ -234,6 +234,7 @@ mod review_json_tests {
 #[serde(tag = "status", rename_all = "snake_case", deny_unknown_fields)]
 pub enum TicketStatusInput {
     InProgress { expected_version: i64 },
+    AwaitingEmployeeConfirmation { expected_version: i64, resolution: String },
 }
 
 #[cfg(test)]

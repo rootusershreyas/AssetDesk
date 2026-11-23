@@ -220,7 +220,12 @@ pub async fn ticket_status_response(
         model::StartWorkError,
     };
 
-    let TicketStatusInput::InProgress { expected_version } = input;
+    let expected_version = match input {
+        TicketStatusInput::InProgress { expected_version } => expected_version,
+        TicketStatusInput::AwaitingEmployeeConfirmation { expected_version, resolution } => {
+            return submit_resolution_response(pool, actor, ticket_id, expected_version, &resolution).await;
+        }
+    };
     let (status, code, message) = if expected_version < 1 {
         (
             StatusCode::UNPROCESSABLE_ENTITY,
@@ -271,4 +276,47 @@ pub async fn ticket_status_response(
         Json(json!({"error": {"code": code, "message": message}})),
     )
         .into_response()
+}
+
+async fn submit_resolution_response(
+    pool: &PgPool,
+    actor: Uuid,
+    ticket_id: Uuid,
+    expected_version: i64,
+    resolution: &str,
+) -> Response {
+    use super::{
+        lifecycle::{PersistResolutionError, resolve_assigned_ticket},
+        service::SubmitResolutionError,
+    };
+    let (status, code, message) = if expected_version < 1 {
+        (StatusCode::UNPROCESSABLE_ENTITY, "validation_error", "Expected version must be positive.")
+    } else {
+        match resolve_assigned_ticket(pool, ticket_id, actor, expected_version, resolution).await {
+            Ok(version) => return Json(json!({
+                "id": ticket_id, "status": "awaiting_employee_confirmation", "version": version
+            })).into_response(),
+            Err(PersistResolutionError::TicketNotFound) => return ticket_not_found(),
+            Err(PersistResolutionError::Rule(SubmitResolutionError::NotAssignedHandler)) => (
+                StatusCode::FORBIDDEN, "not_assigned_handler", "Only the assigned handler can submit a resolution.",
+            ),
+            Err(PersistResolutionError::Rule(SubmitResolutionError::VersionConflict)) => (
+                StatusCode::CONFLICT, "version_conflict", "Ticket version has changed.",
+            ),
+            Err(PersistResolutionError::Rule(SubmitResolutionError::InvalidText(_))) => (
+                StatusCode::UNPROCESSABLE_ENTITY, "validation_error", "Resolution must contain 1 to 8000 characters.",
+            ),
+            Err(PersistResolutionError::Rule(SubmitResolutionError::InvalidStatus | SubmitResolutionError::IncompleteReview)) => (
+                StatusCode::CONFLICT, "invalid_transition", "Only reviewed work in progress can receive a resolution.",
+            ),
+            Err(PersistResolutionError::IneligibleHandler) => (
+                StatusCode::CONFLICT, "ineligible_handler", "The assigned handler is no longer eligible.",
+            ),
+            Err(PersistResolutionError::Database(_)) => {
+                tracing::error!("Resolution submission failed");
+                (StatusCode::INTERNAL_SERVER_ERROR, "internal_error", "Could not submit resolution.")
+            }
+        }
+    };
+    (status, Json(json!({"error": {"code": code, "message": message}}))).into_response()
 }

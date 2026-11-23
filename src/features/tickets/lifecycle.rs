@@ -137,9 +137,12 @@ pub async fn resolve_assigned_ticket(
     resolution: &str,
 ) -> Result<i64, PersistResolutionError> {
     let mut tx = pool.begin().await?;
-    let ticket = lock_ticket(&mut tx, ticket_id, None)
+    let ticket = lock_ticket(&mut tx, ticket_id, Some(actor))
         .await?
         .ok_or(PersistResolutionError::TicketNotFound)?;
+    if ticket.assignee_id != Some(actor) {
+        return Err(PersistResolutionError::Rule(super::service::SubmitResolutionError::NotAssignedHandler));
+    }
     let submitted = super::service::submit_resolution(
         &ticket.review_state(),
         expected_version,

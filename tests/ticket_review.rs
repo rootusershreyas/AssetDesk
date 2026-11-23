@@ -230,7 +230,7 @@ async fn resolution_requires_current_handler_and_commits_with_event(pool: PgPool
         .unwrap();
     assert!(matches!(
         submit(member, 3).await,
-        Err(PersistResolutionError::IneligibleHandler)
+        Err(PersistResolutionError::TicketNotFound)
     ));
     sqlx::query("UPDATE users SET account_status='active' WHERE id=$1")
         .bind(member)
@@ -571,4 +571,43 @@ async fn start_response_scopes_access_before_reporting_ticket_conflicts(pool: Pg
         json!({"id": id, "status": "in_progress", "version": 3})
     );
     assert_eq!(call(id, handler, 3).await.status(), StatusCode::CONFLICT);
+}
+
+#[sqlx::test(fixtures("ticket_creation", "ticket_review"))]
+#[ignore = "requires disposable PostgreSQL databases"]
+async fn resolution_response_validates_access_text_and_committed_result(pool: PgPool) {
+    use assetdesk::features::tickets::{
+        dto::TicketStatusInput, routes::ticket_status_response, lifecycle::start_assigned_ticket,
+    };
+    use axum::{body::to_bytes, http::StatusCode};
+    let (id, _) = ticket(&pool, "p1").await;
+    let manager = user(&pool, "it_manager").await;
+    let outsider = user(&pool, "employee").await;
+    review_and_assign(&pool, id, manager, None, 1).await.unwrap();
+    start_assigned_ticket(&pool, id, manager, 2).await.unwrap();
+    for (actor, version, resolution, status) in [
+        (outsider, 1, "Fixed", StatusCode::NOT_FOUND),
+        (manager, 2, "Fixed", StatusCode::CONFLICT),
+        (manager, 3, "  ", StatusCode::UNPROCESSABLE_ENTITY),
+        (manager, 3, "Updated client", StatusCode::OK),
+    ] {
+        let input = serde_json::from_value::<TicketStatusInput>(serde_json::json!({
+            "status": "awaiting_employee_confirmation",
+            "expected_version": version,
+            "resolution": resolution
+        })).unwrap();
+        let response = ticket_status_response(&pool, actor, id, input).await;
+        assert_eq!(response.status(), status);
+        if status == StatusCode::OK {
+            let body: serde_json::Value = serde_json::from_slice(
+                &to_bytes(response.into_body(), 4096).await.unwrap()
+            ).unwrap();
+            assert_eq!(body, serde_json::json!({
+                "id": id, "status": "awaiting_employee_confirmation", "version": 4
+            }));
+        }
+    }
+    let saved: (String, i64) = sqlx::query_as("SELECT resolution,version FROM tickets WHERE id=$1")
+        .bind(id).fetch_one(&pool).await.unwrap();
+    assert_eq!(saved, ("Updated client".into(), 4));
 }
