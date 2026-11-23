@@ -85,19 +85,39 @@ pub async fn create_ticket_response(
 pub async fn get_ticket_response(pool: &PgPool, requester: Uuid, ticket_id: Uuid) -> Response {
     match super::repository::find_ticket_for_requester(pool, ticket_id, requester).await {
         Ok(Some(ticket)) => Json(ticket).into_response(),
-        Ok(None) => (
-            StatusCode::NOT_FOUND,
-            Json(
-                json!({"error": {"code": "ticket_not_found", "message": "Ticket was not found."}}),
-            ),
-        )
-            .into_response(),
+        Ok(None) => ticket_not_found(),
         Err(_) => {
             tracing::error!("Ticket lookup failed");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({"error": {"code": "internal_error", "message": "Could not retrieve ticket."}})),
             ).into_response()
+        }
+    }
+}
+
+fn ticket_not_found() -> Response {
+    (
+        StatusCode::NOT_FOUND,
+        Json(json!({"error": {"code": "ticket_not_found", "message": "Ticket was not found."}})),
+    )
+        .into_response()
+}
+
+/// Supply the requester UUID from the trusted actor context.
+pub async fn get_ticket_events_response(
+    pool: &PgPool,
+    requester: Uuid,
+    ticket_id: Uuid,
+) -> Response {
+    match super::repository::list_events_for_requester(pool, ticket_id, requester).await {
+        // Every committed ticket has a version-1 creation event.
+        Ok(events) if events.is_empty() => ticket_not_found(),
+        Ok(events) => Json(events).into_response(),
+        Err(_) => {
+            tracing::error!("Ticket history lookup failed");
+            (StatusCode::INTERNAL_SERVER_ERROR,
+             Json(json!({"error": {"code": "internal_error", "message": "Could not retrieve ticket history."}}))).into_response()
         }
     }
 }

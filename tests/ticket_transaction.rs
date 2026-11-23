@@ -401,3 +401,44 @@ async fn ticket_detail_response_is_scoped_to_requester(pool: PgPool) {
         );
     }
 }
+
+#[sqlx::test(fixtures("ticket_creation"))]
+#[ignore = "requires disposable PostgreSQL databases"]
+async fn history_response_returns_ordered_events_and_hides_other_tickets(pool: PgPool) {
+    use assetdesk::features::tickets::routes::{get_ticket_events_response, get_ticket_response};
+    use axum::{body::to_bytes, http::StatusCode};
+    let (owner, input) = sample(&pool).await;
+    let (other, _) = sample(&pool).await;
+    let id = create_ticket(&pool, owner, &input).await.unwrap();
+    sqlx::query(
+        "INSERT INTO ticket_events(ticket_id,actor_id,event_type,resulting_version)
+        VALUES($1,$2,'started',3),($1,$2,'reviewed_and_assigned',2)",
+    )
+    .bind(id)
+    .bind(other)
+    .execute(&pool)
+    .await
+    .unwrap();
+    let response = get_ticket_events_response(&pool, owner, id).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let history: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), 8192).await.unwrap()).unwrap();
+    assert_eq!(
+        history,
+        serde_json::json!([
+            {"actor_id":owner,"event_type":"created","resulting_version":1},
+            {"actor_id":other,"event_type":"reviewed_and_assigned","resulting_version":2},
+            {"actor_id":other,"event_type":"started","resulting_version":3}
+        ])
+    );
+    let detail = get_ticket_response(&pool, owner, Uuid::nil()).await;
+    let missing_body = to_bytes(detail.into_body(), 8192).await.unwrap();
+    for (actor, ticket) in [(other, id), (owner, Uuid::nil())] {
+        let response = get_ticket_events_response(&pool, actor, ticket).await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_eq!(
+            to_bytes(response.into_body(), 8192).await.unwrap(),
+            missing_body
+        );
+    }
+}
