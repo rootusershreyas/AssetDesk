@@ -365,3 +365,80 @@ async fn requester_confirmation_commits_once_and_preserves_resolution(pool: PgPo
         )]
     );
 }
+
+#[sqlx::test(fixtures("ticket_creation", "ticket_review"))]
+#[ignore = "requires disposable PostgreSQL databases"]
+async fn complete_ticket_lifecycle_records_five_ordered_events(pool: PgPool) {
+    use assetdesk::features::{
+        categories::model::TicketType,
+        tickets::{
+            dto::CreateTicketInput,
+            lifecycle::{
+                confirm_ticket_resolution, resolve_assigned_ticket, start_assigned_ticket,
+            },
+            model::Priority,
+            repository::{create_ticket, find_ticket_for_requester, list_events_for_requester},
+        },
+    };
+    let requester = user(&pool, "employee").await;
+    let manager = user(&pool, "it_manager").await;
+    let member = user(&pool, "it_member").await;
+    let category_id: Uuid = sqlx::query_scalar(
+        "SELECT id FROM categories WHERE ticket_type='incident' AND name='Others'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    sqlx::query("INSERT INTO category_agents(category_id,user_id) VALUES($1,$2)")
+        .bind(category_id)
+        .bind(member)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    let input = CreateTicketInput {
+        category_id,
+        ticket_type: TicketType::Incident,
+        priority: Priority::P2,
+        subject: "VPN reconnect".into(),
+        description: "The VPN disconnects after sleep.".into(),
+        custom_concern: Some("Reconnecting requires a restart.".into()),
+    };
+    let id = create_ticket(&pool, requester, &input).await.unwrap();
+    let reviewed = review_and_assign(&pool, id, manager, Some(member), 1)
+        .await
+        .unwrap();
+    let started = start_assigned_ticket(&pool, id, member, reviewed)
+        .await
+        .unwrap();
+    let awaiting = resolve_assigned_ticket(&pool, id, member, started, "Updated VPN client.")
+        .await
+        .unwrap();
+    let confirmed = confirm_ticket_resolution(&pool, id, requester, awaiting)
+        .await
+        .unwrap();
+
+    let saved = find_ticket_for_requester(&pool, id, requester)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(saved.status, "resolved");
+    assert_eq!((confirmed, saved.version), (5, 5));
+    let history = list_events_for_requester(&pool, id, requester)
+        .await
+        .unwrap();
+    let events: Vec<_> = history
+        .iter()
+        .map(|e| (e.resulting_version, e.event_type.as_str(), e.actor_id))
+        .collect();
+    assert_eq!(
+        events,
+        vec![
+            (1, "created", requester),
+            (2, "reviewed_and_assigned", manager),
+            (3, "started", member),
+            (4, "resolution_submitted", member),
+            (5, "resolution_confirmed", requester),
+        ]
+    );
+}
