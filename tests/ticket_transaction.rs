@@ -154,3 +154,50 @@ async fn lists_requester_tickets_in_stable_pages(pool: PgPool) {
         Err(ListTicketsError::InvalidOffset)
     ));
 }
+
+#[sqlx::test(fixtures("ticket_creation"))]
+#[ignore = "requires PostgreSQL with permission to create disposable databases"]
+async fn requester_filters_precede_pagination(pool: PgPool) {
+    use assetdesk::features::tickets::{
+        model::TicketStatus, repository::list_filtered_tickets_for_requester,
+    };
+
+    let (owner, mut input) = sample(&pool).await;
+    let (other, _) = sample(&pool).await;
+    let waiting = create_ticket(&pool, owner, &input).await.unwrap();
+    sqlx::query("UPDATE tickets SET status = 'awaiting_employee_confirmation' WHERE id = $1")
+        .bind(waiting)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let open_p2 = create_ticket(&pool, owner, &input).await.unwrap();
+    create_ticket(&pool, other, &input).await.unwrap();
+    input.priority = Priority::P4;
+    let open_p4 = create_ticket(&pool, owner, &input).await.unwrap();
+    for (status, priority, limit, mut expected) in [
+        (Some(TicketStatus::Open), None, 20, vec![open_p2, open_p4]),
+        (None, Some(Priority::P2), 20, vec![waiting, open_p2]),
+        (
+            Some(TicketStatus::Open),
+            Some(Priority::P2),
+            1,
+            vec![open_p2],
+        ),
+        (
+            Some(TicketStatus::AwaitingEmployeeConfirmation),
+            Some(Priority::P2),
+            1,
+            vec![waiting],
+        ),
+        (Some(TicketStatus::Resolved), None, 20, vec![]),
+    ] {
+        let rows =
+            list_filtered_tickets_for_requester(&pool, owner, status, priority, Some(limit), None)
+                .await
+                .unwrap();
+        let mut ids: Vec<_> = rows.iter().map(|r| r.id).collect();
+        ids.sort();
+        expected.sort();
+        assert_eq!(ids, expected);
+    }
+}

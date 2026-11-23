@@ -1,6 +1,6 @@
 use super::{
     dto::CreateTicketInput,
-    model::Priority,
+    model::{Priority, TicketStatus},
     service::{CreationCategory, CreationError, validate_creation},
 };
 use crate::features::categories::model::TicketType;
@@ -41,12 +41,6 @@ pub async fn create_ticket(
     })
     .map_err(CreateTicketError::Validation)?;
 
-    let priority = match input.priority {
-        Priority::P1 => "p1",
-        Priority::P2 => "p2",
-        Priority::P3 => "p3",
-        Priority::P4 => "p4",
-    };
     let id = sqlx::query_scalar::<_, Uuid>(
         "INSERT INTO tickets (requester_id, category_id, ticket_type, priority,
             subject, description, custom_concern, ticket_number, status, version)
@@ -57,7 +51,7 @@ pub async fn create_ticket(
     .bind(requester_id)
     .bind(input.category_id)
     .bind(&input.ticket_type)
-    .bind(priority)
+    .bind(input.priority)
     .bind(input.subject.trim())
     .bind(input.description.trim())
     .bind(input.custom_concern.as_deref().map(str::trim))
@@ -120,6 +114,17 @@ pub async fn list_tickets_for_requester(
     limit: Option<i64>,
     offset: Option<i64>,
 ) -> Result<Vec<TicketDetails>, ListTicketsError> {
+    list_filtered_tickets_for_requester(pool, requester_id, None, None, limit, offset).await
+}
+
+pub async fn list_filtered_tickets_for_requester(
+    pool: &PgPool,
+    requester_id: Uuid,
+    status: Option<TicketStatus>,
+    priority: Option<Priority>,
+    limit: Option<i64>,
+    offset: Option<i64>,
+) -> Result<Vec<TicketDetails>, ListTicketsError> {
     let limit = limit.unwrap_or(20);
     let offset = offset.unwrap_or(0);
     if !(1..=100).contains(&limit) {
@@ -132,11 +137,15 @@ pub async fn list_tickets_for_requester(
         "SELECT id, ticket_number, requester_id, category_id, ticket_type, priority,
                 subject, description, custom_concern, status, version
          FROM tickets WHERE requester_id = $1
+           AND ($4::text IS NULL OR status = $4)
+           AND ($5::text IS NULL OR priority = $5)
          ORDER BY created_at DESC, id ASC LIMIT $2 OFFSET $3",
     )
     .bind(requester_id)
     .bind(limit)
     .bind(offset)
+    .bind(status)
+    .bind(priority)
     .fetch_all(pool)
     .await
     .map_err(ListTicketsError::Database)
