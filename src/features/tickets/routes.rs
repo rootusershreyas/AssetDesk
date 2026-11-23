@@ -1,11 +1,12 @@
 use super::{
-    dto::{CreateInputError, CreateTicketInput},
-    repository::{CreateTicketError, create_ticket},
-    service::CreationError,
+    dto::{CreateInputError, CreateTicketInput, ListTicketsQuery},
+    repository::{CreateTicketError, ListTicketsError, create_ticket},
+    service::{CreationError, requester_ticket_page},
     validation::ValidationError,
 };
 use axum::{
     Json,
+    extract::{Query, rejection::QueryRejection},
     http::{StatusCode, header},
     response::{IntoResponse, Response},
 };
@@ -120,4 +121,41 @@ pub async fn get_ticket_events_response(
              Json(json!({"error": {"code": "internal_error", "message": "Could not retrieve ticket history."}}))).into_response()
         }
     }
+}
+
+/// Return a ticket page for the requester supplied by the trusted actor context.
+pub async fn list_tickets_response(
+    pool: &PgPool,
+    requester: Uuid,
+    query: Result<Query<ListTicketsQuery>, QueryRejection>,
+) -> Response {
+    let (status, code, message) = match query {
+        Err(_) => (
+            StatusCode::BAD_REQUEST,
+            "invalid_query",
+            "Provide valid ticket filters and pagination parameters.",
+        ),
+        Ok(Query(query)) => match requester_ticket_page(pool, requester, query).await {
+            Ok(page) => return Json(page).into_response(),
+            Err(ListTicketsError::InvalidLimit) => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "validation_error",
+                "Limit must be between 1 and 100.",
+            ),
+            Err(ListTicketsError::InvalidOffset) => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "validation_error",
+                "Offset must be nonnegative.",
+            ),
+            Err(ListTicketsError::Database(_)) => {
+                tracing::error!("Ticket listing failed");
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "internal_error",
+                    "Could not retrieve tickets.",
+                )
+            }
+        },
+    };
+    (status, Json(json!({"error": {"code": code, "message": message}}))).into_response()
 }

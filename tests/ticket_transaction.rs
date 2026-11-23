@@ -442,3 +442,44 @@ async fn history_response_returns_ordered_events_and_hides_other_tickets(pool: P
         );
     }
 }
+
+#[sqlx::test(fixtures("ticket_creation"))]
+#[ignore = "requires PostgreSQL with permission to create disposable databases"]
+async fn ticket_list_response_scopes_pages_and_reports_invalid_queries(pool: PgPool) {
+    use assetdesk::features::tickets::{dto::ListTicketsQuery, routes::list_tickets_response};
+    use axum::{body::to_bytes, extract::Query, http::StatusCode};
+
+    let (owner, input) = sample(&pool).await;
+    let (other, _) = sample(&pool).await;
+    let id = create_ticket(&pool, owner, &input).await.unwrap();
+    create_ticket(&pool, other, &input).await.unwrap();
+    let parse = |uri: &str| Query::<ListTicketsQuery>::try_from_uri(&uri.parse().unwrap());
+
+    let response = list_tickets_response(&pool, owner, parse("/?priority=p2&limit=10")).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let page: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), 8192).await.unwrap()).unwrap();
+    assert_eq!(page["items"].as_array().unwrap().len(), 1);
+    assert_eq!(page["items"][0]["id"], id.to_string());
+    assert_eq!(page["limit"], 10);
+    assert_eq!(page["offset"], 0);
+
+    let response = list_tickets_response(&pool, owner, parse("/?offset=1")).await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let page: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), 8192).await.unwrap()).unwrap();
+    assert_eq!(page, serde_json::json!({"items": [], "limit": 20, "offset": 1}));
+
+    for (uri, status, code) in [
+        ("/?priority=unknown", StatusCode::BAD_REQUEST, "invalid_query"),
+        ("/?requester_id=other", StatusCode::BAD_REQUEST, "invalid_query"),
+        ("/?limit=101", StatusCode::UNPROCESSABLE_ENTITY, "validation_error"),
+        ("/?offset=-1", StatusCode::UNPROCESSABLE_ENTITY, "validation_error"),
+    ] {
+        let response = list_tickets_response(&pool, owner, parse(uri)).await;
+        assert_eq!(response.status(), status, "{uri}");
+        let body: serde_json::Value =
+            serde_json::from_slice(&to_bytes(response.into_body(), 8192).await.unwrap()).unwrap();
+        assert_eq!(body["error"]["code"], code, "{uri}");
+    }
+}
