@@ -3,7 +3,7 @@ use assetdesk::features::{
     tickets::{
         dto::CreateTicketInput,
         model::Priority,
-        repository::{CreateTicketError, create_ticket},
+        repository::{CreateTicketError, create_ticket, find_ticket_for_requester},
     },
 };
 use sqlx::PgPool;
@@ -74,4 +74,38 @@ async fn failed_event_rolls_back_ticket(pool: PgPool) {
     .await
     .unwrap();
     assert_eq!(counts, (0, 0));
+}
+
+#[sqlx::test(fixtures("ticket_creation"))]
+#[ignore = "requires PostgreSQL with permission to create disposable databases"]
+async fn requester_reads_only_their_own_selected_ticket(pool: PgPool) {
+    let (requester, input) = sample(&pool).await;
+    let (other_requester, other_input) = sample(&pool).await;
+    let id = create_ticket(&pool, requester, &input).await.unwrap();
+    let other_id = create_ticket(&pool, other_requester, &other_input)
+        .await
+        .unwrap();
+    let ticket = find_ticket_for_requester(&pool, id, requester)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(ticket.id, id);
+    assert_eq!(ticket.requester_id, requester);
+    assert_eq!(ticket.category_id, input.category_id);
+    assert_eq!(ticket.subject, input.subject);
+    assert_eq!(ticket.description, input.description);
+    assert_eq!(ticket.custom_concern, input.custom_concern);
+    assert_eq!(ticket.ticket_type, input.ticket_type);
+    assert_eq!(ticket.priority, "p2");
+    assert_eq!(ticket.status, "open");
+    assert_eq!(ticket.version, 1);
+    assert_eq!(ticket.ticket_number, "INC1001");
+    for invisible_id in [other_id, Uuid::nil()] {
+        assert!(
+            find_ticket_for_requester(&pool, invisible_id, requester)
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
 }

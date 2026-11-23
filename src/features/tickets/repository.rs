@@ -74,3 +74,35 @@ pub async fn create_ticket(
     tx.commit().await?;
     Ok(id)
 }
+
+#[derive(Debug, sqlx::FromRow)]
+pub struct TicketDetails {
+    pub id: Uuid,
+    pub ticket_number: String,
+    pub requester_id: Uuid,
+    pub category_id: Uuid,
+    pub ticket_type: TicketType,
+    pub priority: String,
+    pub subject: String,
+    pub description: String,
+    pub custom_concern: Option<String>,
+    pub status: String,
+    pub version: i64,
+}
+
+/// Supply the requester ID from the actor context. Missing and invisible tickets both return None.
+pub async fn find_ticket_for_requester(
+    pool: &PgPool,
+    ticket_id: Uuid,
+    requester_id: Uuid,
+) -> Result<Option<TicketDetails>, sqlx::Error> {
+    sqlx::query_as(
+        "SELECT id, ticket_number, requester_id, category_id, ticket_type, priority,
+                subject, description, custom_concern, status, version
+         FROM tickets WHERE id = $1 AND requester_id = $2",
+    )
+    .bind(ticket_id)
+    .bind(requester_id)
+    .fetch_optional(pool)
+    .await
+}
